@@ -1,6 +1,8 @@
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
+  CheckIcon,
+  CopyIcon,
   MessageSquareIcon,
   PlayIcon,
   PlusIcon,
@@ -55,6 +57,37 @@ function OpenConversationButton({ loop }: { loop: { threadOpenUrl?: string | nul
     >
       <MessageSquareIcon className="size-3.5" /> Open convo <ArrowUpRightIcon className="size-3" />
     </a>
+  );
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function CopyVibeCommand({ workdir, loopId, sessionId }: { workdir: string | null; loopId: string; sessionId: string }) {
+  const [copied, setCopied] = useState(false);
+  const command = workdir
+    ? `cd ${shellQuote(workdir)} && VIBE_HOME="$PWD/var/vibe/loops_${loopId}" vibe --resume ${sessionId}`
+    : null;
+  const copy = () => {
+    if (!command) return;
+    navigator.clipboard?.writeText(command).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
+  };
+  return (
+    <button
+      onClick={copy}
+      disabled={!command}
+      title="Copy vibe resume command"
+      className="inline-flex size-5 items-center justify-center rounded text-dim hover:bg-side hover:text-fg disabled:opacity-40"
+    >
+      {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+    </button>
   );
 }
 
@@ -215,6 +248,11 @@ export function LoopDetail({ loopId }: { loopId: string }) {
   const [draft, setDraft] = useState<LoopInput | null>(isNew ? NEW_DRAFT : null);
   const [runs, setRuns] = useState<LoopRun[]>([]);
   const [saved, setSaved] = useState(false);
+  const [workdir, setWorkdir] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.meta().then((meta) => setWorkdir(meta.workdir)).catch(() => setWorkdir(null));
+  }, []);
 
   useEffect(() => {
     if (isNew) return;
@@ -274,9 +312,18 @@ export function LoopDetail({ loopId }: { loopId: string }) {
           <MessageSquareIcon className="size-4 text-dim" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-fg">Vibe session</p>
-            <p className="truncate font-mono text-xs text-dim">
-              {draft.threadProject ? `${draft.threadProject} · ` : ""}{draft.threadId}
-            </p>
+            {draft.threadProject === "vibe" ? (
+              <a
+                href={`/vibe/loops_${encodeURIComponent(loopId)}/${encodeURIComponent(draft.threadId)}`}
+                className="block truncate font-mono text-xs text-link hover:underline"
+              >
+                vibe · {draft.threadId}
+              </a>
+            ) : (
+              <p className="truncate font-mono text-xs text-dim">
+                {draft.threadProject ? `${draft.threadProject} · ` : ""}{draft.threadId}
+              </p>
+            )}
           </div>
           <OpenConversationButton loop={draft} />
         </div>
@@ -375,7 +422,18 @@ export function LoopDetail({ loopId }: { loopId: string }) {
                     <span>· {r.trigger}</span>
                     {r.exitCode !== null ? <span>· exit {r.exitCode}</span> : null}
                     {r.costUsd !== null ? <span>· ${r.costUsd.toFixed(4)}</span> : null}
-                    {r.sessionId ? <span title={r.sessionId}>· session {r.sessionId.slice(0, 8)}</span> : null}
+                    {r.sessionId ? (
+                      <span className="inline-flex items-center" title={r.sessionId}>
+                        ·&nbsp;
+                        <a
+                          href={`/vibe/loops_${encodeURIComponent(loopId)}/${encodeURIComponent(r.sessionId)}`}
+                          className="text-link hover:underline"
+                        >
+                          session {r.sessionId.slice(0, 8)}
+                        </a>
+                        <CopyVibeCommand workdir={workdir} loopId={loopId} sessionId={r.sessionId} />
+                      </span>
+                    ) : null}
                   </div>
                   {r.summary ? (
                     <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted">

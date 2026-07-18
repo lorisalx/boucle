@@ -41,18 +41,27 @@ import {
   getProjectPage,
   isValidProjectId,
   listProjects,
+  setBrainSearchReindexer,
   writeProjectStatus,
   type ProjectStatus,
   type ProjectSummary,
 } from "./projects.ts";
 import { listMeetings, type Meeting } from "./meetings.ts";
+import { BrainSearch } from "./search.ts";
+import { readVibeTranscript, VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
 
 const dbPath = resolveDbPath();
 const store = new BoucleStore(dbPath);
+const search = new BrainSearch(dbPath, store);
+setBrainSearchReindexer(() => search.reindexFiles());
 const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+app.get("/api/meta", (c) => c.json({ workdir: process.cwd() }));
+
+app.get("/api/search", async (c) => c.json(await search.search(c.req.query("q") ?? "")));
 
 app.get("/api/tickets/open", (c) => c.json(store.listOpen()));
 
@@ -284,6 +293,38 @@ app.post("/api/loops/:id/run", (c) => {
 app.get("/api/loops/:id/runs", (c) => {
   const limit = Number.parseInt(c.req.query("limit") ?? "20", 10);
   return c.json(store.listRuns(c.req.param("id"), limit));
+});
+
+function validVibeParams(scope: string, sessionId: string): boolean {
+  return VIBE_SCOPE_RE.test(scope) && VIBE_SESSION_RE.test(sessionId);
+}
+
+app.get("/api/vibe/:scope/:sessionId", async (c) => {
+  const scope = c.req.param("scope");
+  const sessionId = c.req.param("sessionId");
+  if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid Vibe scope or session id" }, 400);
+  const transcript = await readVibeTranscript(process.cwd(), scope, sessionId);
+  if (!transcript) return c.json({ error: "Vibe session not found" }, 404);
+  return c.json({ ...transcript, running: scheduler.isVibeRunning(scope) });
+});
+
+app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
+  const scope = c.req.param("scope");
+  const sessionId = c.req.param("sessionId");
+  if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid Vibe scope or session id" }, 400);
+  const body = (await c.req.json().catch(() => ({}))) as { message?: string };
+  const message = (body.message ?? "").trim();
+  if (!message) return c.json({ error: "message required" }, 400);
+  if (!(await readVibeTranscript(process.cwd(), scope, sessionId))) {
+    return c.json({ error: "Vibe session not found" }, 404);
+  }
+  try {
+    const started = scheduler.continueVibeThread(scope, sessionId, message);
+    if (!started) return c.json({ error: "a Vibe run is already in progress for this scope" }, 409);
+    return c.json({ ok: true, running: true }, 202);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
+  }
 });
 
 app.get("/api/settings", (c) => {
@@ -594,5 +635,6 @@ app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
 serve({ fetch: app.fetch, port: BOUCLE_PORT }, (info) => {
   scheduler.start();
+  void search.bootstrap().catch(() => {});
   process.stdout.write(`boucle server on http://localhost:${info.port}\n`);
 });

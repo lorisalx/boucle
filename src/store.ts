@@ -145,6 +145,11 @@ export interface ListTicketsFilter {
   needs?: TicketNeeds;
 }
 
+export interface SearchIndexer {
+  reindexTicket(ticketId: string): void;
+  search(query: string, limit?: number): Promise<unknown>;
+}
+
 /** Initial bucket for a fresh/back-filled EPIC, derived from its priority. */
 export function bucketFromPriority(priority: TicketPriority): TicketBucket {
   switch (priority) {
@@ -173,7 +178,7 @@ export interface ProjectMeta {
 // ===============================
 
 export type LoopRunStatus = "running" | "ok" | "error" | "timeout";
-export type LoopRunTrigger = "schedule" | "manual" | "smart_capture" | "enrich";
+export type LoopRunTrigger = "schedule" | "manual" | "smart_capture" | "enrich" | "vibe_thread";
 
 export interface Loop {
   loopId: string;
@@ -332,6 +337,7 @@ Onboarding Copilot, Hélium Migration, Permissions Core, and Usage Observatory. 
 action items are not Nora's tickets, even when they appear in a meeting she attended.
 
 Work the queue via the MCP tools (never send an outbound message):
+- Before creating a ticket, use brain_search to find and merge overlapping tickets or existing brain context.
 - Self-clean first. Review open tickets with ticket_list / ticket_next and re-check the matching project,
   meeting, and ticket history. Use ticket_transition to mark work done or dropped when it was handled, became
   obsolete, or belongs to another teammate. Always pass a one-line \`reason\`, and set \`workRef\` when a
@@ -359,7 +365,8 @@ Do exactly this each run:
    fictional \`people/<slug>\` values, keep title and call_link, add tags and related_projects, and set
    \`processed: true\`. Add a title, summary blockquote, Key points, Decisions, Action items with owners, and
    Connections with people/project wikilinks. Preserve the raw transcript under a collapsed Transcript section.
-4. Create a ticket only for action items Nora committed to. Use ticket_upsert with dedupeKey
+4. Before creating anything, use brain_search to dedupe and merge against existing tickets and brain context.
+   Create a ticket only for action items Nora committed to. Use ticket_upsert with dedupeKey
    "meeting:<filename>:<n>", a short imperative title, priority from urgency, the matching project slug,
    suitable needs, requester, and one concrete next action. Use source "manual". Do not invent tasks.
 5. Update the relevant fake-brain project pages with durable meeting signals, then trigger the local reindex shim.
@@ -376,7 +383,8 @@ Do exactly this each run:
    meaningful completion — something shipped, decided, fixed, or unblocked — append one entry in the format
    \`- **YYYY-MM-DD** | <past-tense one-liner>\`. Skip dropped noise, snooze churn, and trivia. Include workRef
    when useful and combine related same-day completions naturally.
-3. Before writing, check the full page for the event. Append only, never rewrite or delete existing entries,
+3. Before writing, use brain_search to dedupe and merge against existing tickets and brain context, then check
+   the full page for the event. Append only, never rewrite or delete existing entries,
    keep oldest-first order, and create "## Timeline" only when missing.
 4. After any edit, run scripts/gbrain-noop import fake-brain. It is intentionally a local no-op for this demo.
 5. Summarize which pages changed, or return DONT_NOTIFY if none did.`;
@@ -605,6 +613,7 @@ const DEFAULT_TICKETS: SeedTicket[] = [
 
 export class BoucleStore {
   private readonly db: DatabaseSync;
+  private searchIndexer: SearchIndexer | null = null;
 
   constructor(dbPath: string) {
     this.db = new DatabaseSync(dbPath);
@@ -803,6 +812,16 @@ export class BoucleStore {
     this.db
       .prepare(`INSERT INTO ticket_events (event_id, ticket_id, kind, summary, created_at) VALUES (?,?,?,?,?)`)
       .run(randomUUID(), ticketId, kind, summary, at);
+    this.searchIndexer?.reindexTicket(ticketId);
+  }
+
+  setSearchIndexer(indexer: SearchIndexer): void {
+    this.searchIndexer = indexer;
+  }
+
+  search(query: string, limit?: number): Promise<unknown> {
+    if (!this.searchIndexer) throw new Error("Brain search is not initialized");
+    return this.searchIndexer.search(query, limit);
   }
 
   /** Append a free-form event to a ticket's timeline (manual/agent actions). */
@@ -872,6 +891,7 @@ export class BoucleStore {
       this.db
         .prepare(`UPDATE tickets SET body = ?, permalink = ?, source_ref = ?, next_action = ? WHERE dedupe_key = ?`)
         .run(ticket.body, ticket.permalink, ticket.sourceRef, ticket.nextAction, input.dedupeKey);
+      this.searchIndexer?.reindexTicket(ticket.ticketId);
       return this.getByDedupeKey(input.dedupeKey)!;
     }
     ticket.score = computeScore(ticket, nowMs);
@@ -901,6 +921,7 @@ export class BoucleStore {
         t.requester, t.needs, t.effort, t.dueAt, t.snoozedUntil, t.nextAction, t.threadId,
         t.workRef, t.createdBy, t.updatedAt, t.ticketId,
       );
+    this.searchIndexer?.reindexTicket(t.ticketId);
   }
 
   transition(

@@ -39,6 +39,7 @@ export function isDue(loop: Loop, nowMs: number): boolean {
 
 export class LoopScheduler {
   private readonly running = new Set<string>();
+  private readonly vibeScopes = new Set<string>();
   private readonly smartRuns = new Map<
     string,
     { batchId: string; status: "running" | "ok" | "error" | "timeout"; startedAt: string; finishedAt: string | null; detail: string }
@@ -67,14 +68,19 @@ export class LoopScheduler {
   }
 
   isRunning(loopId: string): boolean {
-    return this.running.has(loopId);
+    return this.running.has(loopId) || this.vibeScopes.has(`loops_${loopId}`);
+  }
+
+  isVibeRunning(scope: string): boolean {
+    const loop = scope.startsWith("loops_") ? this.store.getLoop(scope.slice("loops_".length)) : null;
+    return this.vibeScopes.has(scope) || (loop !== null && this.running.has(loop.loopId));
   }
 
   private tick(): void {
     if (this.store.getMeta("loopEnabled") !== "1") return;
     const nowMs = Date.now();
     for (const loop of this.store.listEnabledLoops()) {
-      if (this.running.has(loop.loopId) || !isDue(loop, nowMs)) continue;
+      if (this.isRunning(loop.loopId) || !isDue(loop, nowMs)) continue;
       try {
         this.run(loop, "schedule");
       } catch (error) {
@@ -87,8 +93,37 @@ export class LoopScheduler {
   runNow(loopId: string): LoopRun | null {
     const loop = this.store.getLoop(loopId);
     if (!loop) throw new Error(`Loop not found: ${loopId}`);
-    if (this.running.has(loopId)) return null;
+    if (this.isRunning(loopId)) return null;
     return this.run(loop, "manual");
+  }
+
+  /** Continue an existing Vibe transcript without blocking the request that started it. */
+  continueVibeThread(scope: string, sessionId: string, prompt: string): boolean {
+    if (this.isVibeRunning(scope)) return false;
+    this.assertVibeBudget();
+    const loop = scope.startsWith("loops_") ? this.store.getLoop(scope.slice("loops_".length)) : null;
+    this.vibeScopes.add(scope);
+    let execution: Promise<VibeExecResult>;
+    try {
+      execution = this.execTrackedVibe({ prompt, sessionId, scopeId: scope, model: loop?.model ?? null }, "vibe_thread");
+    } catch (error) {
+      this.vibeScopes.delete(scope);
+      throw error;
+    }
+    execution
+      .then((res) => {
+        if (loop && res.sessionId) {
+          this.store.updateLoop({
+            loopId: loop.loopId,
+            threadId: res.sessionId,
+            threadProject: "vibe",
+            threadOpenUrl: null,
+          });
+        }
+      })
+      .catch((err: unknown) => console.error(err instanceof Error ? err.message : String(err)))
+      .finally(() => this.vibeScopes.delete(scope));
+    return true;
   }
 
   isEnriching(ticketId: string): boolean {
@@ -239,7 +274,10 @@ export class LoopScheduler {
   }
 
   /** Store one-shot Vibe work beside loop runs so its reported cost and session count toward the global budget. */
-  private execTrackedVibe(spec: VibeExecSpec, trigger: "smart_capture" | "enrich"): Promise<VibeExecResult> {
+  private execTrackedVibe(
+    spec: VibeExecSpec,
+    trigger: "smart_capture" | "enrich" | "vibe_thread",
+  ): Promise<VibeExecResult> {
     const syntheticLoopId = `vibe:${trigger}`;
     const run = this.store.recordRunStart(syntheticLoopId, trigger);
     return this.execVibe(spec)

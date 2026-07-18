@@ -73,6 +73,24 @@ export interface ChatTranscript {
   ticket: Ticket | null;
 }
 
+export interface VibeEntry {
+  role: "user" | "assistant" | "tool";
+  content: string;
+  toolName?: string;
+}
+
+export interface VibeTranscript {
+  meta: {
+    sessionId: string;
+    title: string | null;
+    startTime: string | null;
+    endTime: string | null;
+    costUsd: number | null;
+  };
+  entries: VibeEntry[];
+  running: boolean;
+}
+
 export type ProjectStatus = "scoping" | "in_progress" | "backlog" | "on_hold" | "done" | "archived";
 
 export interface ProjectSummary {
@@ -155,7 +173,7 @@ export interface LoopRun {
   status: LoopRunStatus;
   exitCode: number | null;
   summary: string;
-  trigger: "schedule" | "manual";
+  trigger: "schedule" | "manual" | "smart_capture" | "enrich" | "vibe_thread";
   costUsd: number | null;
   sessionId: string | null;
 }
@@ -196,6 +214,7 @@ const post = (path: string, body: unknown) =>
   });
 
 export const api = {
+  meta: () => fetch("/api/meta").then((r) => json<{ workdir: string }>(r)),
   open: () => fetch("/api/tickets/open").then((r) => json<Ticket[]>(r)),
   projects: () => fetch("/api/projects").then((r) => json<ProjectSummary[]>(r)),
   meetings: () => fetch("/api/meetings").then((r) => json<Meeting[]>(r)),
@@ -268,6 +287,16 @@ export const api = {
     send: (conversationId: string, text: string) =>
       post(`/api/chats/${encodeURIComponent(conversationId)}/messages`, { text }).then((r) =>
         json<ChatTranscript>(r),
+      ),
+  },
+  vibe: {
+    get: (scope: string, sessionId: string) =>
+      fetch(`/api/vibe/${encodeURIComponent(scope)}/${encodeURIComponent(sessionId)}`).then((r) =>
+        json<VibeTranscript>(r),
+      ),
+    send: (scope: string, sessionId: string, message: string) =>
+      post(`/api/vibe/${encodeURIComponent(scope)}/${encodeURIComponent(sessionId)}/send`, { message }).then((r) =>
+        json<{ ok: boolean; running: boolean }>(r),
       ),
   },
   mcpInfo: () =>
