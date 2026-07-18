@@ -49,12 +49,14 @@ import {
   type ProjectSummary,
 } from "./projects.ts";
 import { listMeetings, type Meeting } from "./meetings.ts";
+import { initBrainGraph, graphSearch } from "./graph.ts";
 import { BrainSearch } from "./search.ts";
 import { readVibeTranscript, VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
 
 const dbPath = resolveDbPath();
 const store = new BoucleStore(dbPath);
 const search = new BrainSearch(dbPath, store);
+initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
 const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
@@ -64,6 +66,8 @@ app.get("/api/health", (c) => c.json({ ok: true }));
 app.get("/api/meta", (c) => c.json({ workdir: process.cwd() }));
 
 app.get("/api/search", async (c) => c.json(await search.search(c.req.query("q") ?? "")));
+
+app.get("/api/search/graph", async (c) => c.json(await graphSearch(c.req.query("q") ?? "")));
 
 app.get("/api/tickets/open", (c) => c.json(store.listOpen()));
 

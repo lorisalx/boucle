@@ -1,3 +1,4 @@
+import { graphSearch } from "./graph.ts";
 import { getProjectPage } from "./projects.ts";
 import type { BoucleStore, ListTicketsFilter, SetTicketFieldsInput, TicketStatus } from "./store.ts";
 
@@ -29,6 +30,20 @@ export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
       parameters: {
         type: "object",
         properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "brain_graph_search",
+      description:
+        "GraphRAG search: hybrid-search seeds expanded over the brain's entity graph (projects, tickets, meetings, people). Returns the connected neighborhood with a via-path per node explaining how it was reached. Use when a question spans entities (who owns what, what a meeting decided about a project).",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 25 } },
         required: ["query"],
         additionalProperties: false,
       },
@@ -145,6 +160,7 @@ export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
 
 export const MISTRAL_BRAIN_TOOL_NAMES = new Set([
   "brain_search",
+  "brain_graph_search",
   "ticket_list",
   "ticket_next",
   "ticket_get",
@@ -169,6 +185,8 @@ export async function executeBoucleTool(store: BoucleStore, name: string, args: 
   switch (name) {
     case "brain_search":
       return store.search(requiredString(args, "query"), typeof args.limit === "number" ? args.limit : 20);
+    case "brain_graph_search":
+      return graphSearch(requiredString(args, "query"), typeof args.limit === "number" ? args.limit : undefined);
     case "ticket_list":
       return store.list(args as ListTicketsFilter);
     case "ticket_next":

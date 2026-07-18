@@ -154,6 +154,8 @@ if (group === "ticket" && action === "upsert") {
   const { BrainSearch } = await import("./search.ts");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
   const search = new BrainSearch(dbPath, store);
+  const { initBrainGraph } = await import("./graph.ts");
+  initBrainGraph(store, search);
   await search.bootstrap();
   const server = createBoucleMcpServer(store);
   await server.connect(new StdioServerTransport());
