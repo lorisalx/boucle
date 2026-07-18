@@ -279,12 +279,6 @@
   <p class="small" data-at="1" style="margin-top:30px">a command centre for your agent fleet, with a second brain inside</p>
 </section>
 
-<!-- 2 · one line of code -->
-<section class="scene" id="s2" data-steps="1">
-  <div class="term"><span class="ps">$</span><span id="typeLine"></span><span class="caret"></span></div>
-  <p class="cap" data-at="1" style="margin-top:40px">It starts with <b>one line</b>. One project, one conversation.<br>You can hold the whole thing in your head.</p>
-</section>
-
 <!-- 3 · the world arrives -->
 <section class="scene" id="s3" data-steps="2">
   <div id="convStage">
@@ -295,7 +289,7 @@
     <div class="chip" data-at="1" style="bottom:4%;right:8%"><b>MEETING</b>blablabla… blabla</div>
     <div class="chip" data-at="1" style="top:44%;left:0%"><b>YOU, 2AM</b>grandma bedtime stories app?</div>
   </div>
-  <p class="cap" data-at="2">Then the world starts throwing context at you.<br>Every input deserves an agent. <b>Every agent is another thread.</b></p>
+  <p class="cap" data-at="2">It starts with one conversation. Then the world throws context at you.<br>Every input deserves an agent. <b>Every agent is another thread.</b></p>
 </section>
 
 <!-- 4 · explosion -->
@@ -572,9 +566,6 @@ function type(el,text,speed=45,done){
 
 /* ---------- scene hooks ---------- */
 const onEnter={}, onStep={};
-
-/* s2: one line */
-onEnter.s2=()=>type(document.getElementById('typeLine'),' vibe "build lechatonfat: a dating site for fat cats"',42);
 
 /* s4: explosion */
 const boom=document.getElementById('boomStage');
