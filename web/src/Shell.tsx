@@ -3,6 +3,7 @@ import {
   CalendarIcon,
   LayoutGridIcon,
   ListIcon,
+  NetworkIcon,
   PlusIcon,
   RepeatIcon,
   SettingsIcon,
@@ -19,6 +20,7 @@ const BUDGET_CAP_USD = 30;
 const NAV = [
   { hash: "#/", label: "Queue", icon: ListIcon },
   { hash: "#/brain", label: "Brain", icon: BrainIcon },
+  { hash: "#/graph", label: "Graph", icon: NetworkIcon },
   { hash: "#/projects", label: "Projects", icon: LayoutGridIcon },
   { hash: "#/meetings", label: "Meetings", icon: CalendarIcon },
   { hash: "#/loops", label: "Loops", icon: RepeatIcon },
