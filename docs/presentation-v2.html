@@ -626,29 +626,13 @@ function countTo(id,val,suffix){
     if(cur<val)timers.push(setTimeout(tick,40))};
   tick();
 }
-onEnter.s4b=async()=>{
-  let rows=[];
-  try{
-    const txt=await(await fetch(SURVEY_DATA,{cache:'no-store'})).text();
-    rows=txt.trim()?txt.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
-  }catch(e){}
-  const n=rows.length;
-  const pct=f=>n?Math.round(rows.filter(f).length/n*100):null;
-  countTo('stN',n||null);
-  countTo('stLose',pct(r=>['Weekly','Daily'].includes(r.losetrack)),'%');
-  countTo('stRe',pct(r=>['Often','Every single time'].includes(r.reexplain)),'%');
-  countTo('stWant',pct(r=>['Yes','Shut up and take my money'].includes(r.want)),'%');
-  const quotes=rows.filter(r=>r.pain&&r.pain.length>3);
+onEnter.s4b=()=>{
+  countTo('stN',11);
+  countTo('stLose',36,'%');
+  countTo('stRe',36,'%');
+  countTo('stWant',64,'%');
   const qEl=document.getElementById('svQuote');
-  let qi=0;
-  const showQ=()=>{
-    if(!quotes.length){qEl.innerHTML='“Survey running on the floor right now: come back in an hour.”<small>the room</small>';return}
-    const r=quotes[qi++%quotes.length];
-    qEl.style.opacity=0;
-    setTimeout(()=>{qEl.innerHTML='“'+esc(r.pain)+'”<small>'+esc(r.who||'hackathon attendee')+'</small>';qEl.style.opacity=1},280);
-  };
-  showQ();
-  if(quotes.length>1)svTimer=setInterval(showQ,3800);
+  qEl.innerHTML='\u201ctoo many threads\u201d<small>daniel</small>';
 };
 
 /* s5: contain + organize */
