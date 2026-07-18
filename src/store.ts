@@ -393,6 +393,10 @@ interface SeedTicket extends UpsertTicketInput {
   status: TicketStatus;
   snoozeDays?: number;
   workRef?: string;
+  /** Backdate: days ago the ticket reached its status (drives the "done" history + activity heatmap). */
+  doneDaysAgo?: number;
+  /** Backdate: days ago the ticket was captured. Defaults to a few days before doneDaysAgo. */
+  createdDaysAgo?: number;
 }
 
 const DEFAULT_TICKETS: SeedTicket[] = [
@@ -611,6 +615,225 @@ const DEFAULT_TICKETS: SeedTicket[] = [
   },
 ];
 
+/**
+ * Completed work from the last few weeks, so the board has history on first boot: the Done
+ * view, project timelines, and the activity heatmap all read from these. Every entry is
+ * `status: "done"` with `doneDaysAgo` so the seed backdates it; titles align with the
+ * synthetic project pages and meeting notes under fake-brain/.
+ */
+const HISTORICAL_TICKETS: SeedTicket[] = [
+  {
+    dedupeKey: "seed:hist:helium-inventory",
+    title: "Inventory the workspaces and data volumes to migrate",
+    body: "Full inventory of historical customer workspaces headed to Hélium, with per-workspace data volumes.",
+    status: "done",
+    priority: "high",
+    project: "helium-migration",
+    source: "manual",
+    requester: "people/bastien-leroux",
+    needs: "human",
+    effort: "l",
+    nextAction: "Shared the inventory sheet with Émile and Maëlle.",
+    createdDaysAgo: 30,
+    doneDaysAgo: 23,
+  },
+  {
+    dedupeKey: "seed:hist:renewal-scoring-v1",
+    title: "Ship the at-risk account scoring v1",
+    body: "First scoring pass over renewal signals, reviewed before the pilot.",
+    status: "done",
+    priority: "high",
+    project: "renewal-signal",
+    source: "manual",
+    requester: "people/maelle-courtois",
+    needs: "claude",
+    effort: "l",
+    nextAction: "Signed off in the renewal signal review.",
+    createdDaysAgo: 28,
+    doneDaysAgo: 24,
+  },
+  {
+    dedupeKey: "seed:hist:helium-rollback",
+    title: "Validate the Hélium rollback procedure",
+    body: "Rollback rehearsed end to end; confirmed under fifteen minutes.",
+    status: "done",
+    priority: "urgent",
+    project: "helium-migration",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "human",
+    effort: "m",
+    nextAction: "Recorded the rollback runbook on the project page.",
+    createdDaysAgo: 24,
+    doneDaysAgo: 21,
+  },
+  {
+    dedupeKey: "seed:hist:partner-scoping",
+    title: "Draft the partner portal scoping brief",
+    body: "Scope, non-goals, and open questions captured for the partner portal.",
+    status: "done",
+    priority: "normal",
+    project: "partner-portal",
+    source: "manual",
+    requester: "people/ines-marceau",
+    needs: "human",
+    effort: "m",
+    nextAction: "Circulated ahead of the scoping meeting.",
+    createdDaysAgo: 22,
+    doneDaysAgo: 18,
+  },
+  {
+    dedupeKey: "seed:hist:renewal-crm-wiring",
+    title: "Wire the renewal signal into the CRM",
+    body: "At-risk scores now surface on the account record for account managers.",
+    status: "done",
+    priority: "normal",
+    project: "renewal-signal",
+    source: "manual",
+    requester: "people/bastien-leroux",
+    needs: "codex",
+    effort: "m",
+    nextAction: "Verified the sync on ten sample accounts.",
+    createdDaysAgo: 18,
+    doneDaysAgo: 13,
+  },
+  {
+    dedupeKey: "seed:hist:copilot-demo",
+    title: "Run the onboarding copilot demo",
+    body: "Walked the team through the copilot on five real onboarding journeys.",
+    status: "done",
+    priority: "normal",
+    project: "onboarding-copilot",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "human",
+    effort: "s",
+    nextAction: "Collected feedback in the demo notes.",
+    createdDaysAgo: 19,
+    doneDaysAgo: 15,
+  },
+  {
+    dedupeKey: "seed:hist:permissions-workshop",
+    title: "Hold the roles and permissions workshop",
+    body: "Aligned on the role model and the revocation requirements.",
+    status: "done",
+    priority: "normal",
+    project: "permissions-core",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "human",
+    effort: "m",
+    nextAction: "Wrote up decisions on the permissions core page.",
+    createdDaysAgo: 13,
+    doneDaysAgo: 8,
+  },
+  {
+    dedupeKey: "seed:hist:usage-backfill",
+    title: "Backfill ninety days of usage events",
+    body: "Historical usage events reprocessed so the observatory dashboards have depth.",
+    status: "done",
+    priority: "normal",
+    project: "usage-observatory",
+    source: "manual",
+    requester: "people/theo-valmont",
+    needs: "codex",
+    effort: "l",
+    nextAction: "Confirmed row counts against the source.",
+    createdDaysAgo: 14,
+    doneDaysAgo: 9,
+  },
+  {
+    dedupeKey: "seed:hist:partner-permission-model",
+    title: "Pick the file-sharing permission model",
+    body: "Chose per-folder sharing over per-file for the partner portal.",
+    status: "done",
+    priority: "high",
+    project: "partner-portal",
+    source: "manual",
+    requester: "people/theo-valmont",
+    needs: "human",
+    effort: "m",
+    nextAction: "Documented the decision and its trade-offs.",
+    createdDaysAgo: 11,
+    doneDaysAgo: 6,
+  },
+  {
+    dedupeKey: "seed:hist:copilot-instrumentation",
+    title: "Instrument copilot suggestion acceptance",
+    body: "Acceptance and dismissal of copilot suggestions now tracked per journey.",
+    status: "done",
+    priority: "normal",
+    project: "onboarding-copilot",
+    source: "manual",
+    requester: "people/ines-marceau",
+    needs: "codex",
+    effort: "m",
+    nextAction: "Dashboards live for the next demo.",
+    createdDaysAgo: 9,
+    doneDaysAgo: 5,
+  },
+  {
+    dedupeKey: "seed:hist:usage-dashboard-review",
+    title: "Review the usage observatory dashboards",
+    body: "Walked the dashboards with Bastien and Théo and trimmed the noisy tiles.",
+    status: "done",
+    priority: "normal",
+    project: "usage-observatory",
+    source: "manual",
+    requester: "people/bastien-leroux",
+    needs: "human",
+    effort: "s",
+    nextAction: "Logged the cohort-naming follow-up as its own ticket.",
+    createdDaysAgo: 10,
+    doneDaysAgo: 5,
+  },
+  {
+    dedupeKey: "seed:hist:permissions-base-matrix",
+    title: "Define the base role matrix",
+    body: "Baseline permissions per role agreed for Permissions Core.",
+    status: "done",
+    priority: "high",
+    project: "permissions-core",
+    source: "manual",
+    requester: "people/nora-bellier",
+    needs: "human",
+    effort: "m",
+    nextAction: "Manager-role edge cases moved to an open ticket.",
+    createdDaysAgo: 9,
+    doneDaysAgo: 4,
+  },
+  {
+    dedupeKey: "seed:hist:helium-first-wave",
+    title: "Migrate the first four workspaces to Hélium",
+    body: "First wave completed with no customer incident.",
+    status: "done",
+    priority: "urgent",
+    project: "helium-migration",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "human",
+    effort: "l",
+    nextAction: "Second-wave list drafted as a follow-up.",
+    createdDaysAgo: 10,
+    doneDaysAgo: 3,
+  },
+  {
+    dedupeKey: "seed:hist:permissions-security-review",
+    title: "Complete the permissions security review",
+    body: "Security walked the role model and audit logging; no blockers raised.",
+    status: "done",
+    priority: "high",
+    project: "permissions-core",
+    source: "manual",
+    requester: "people/camille-dervaux",
+    needs: "human",
+    effort: "m",
+    nextAction: "Audit-log revocation events tracked as an open ticket.",
+    createdDaysAgo: 6,
+    doneDaysAgo: 1,
+  },
+];
+
 export class BoucleStore {
   private readonly db: DatabaseSync;
   private searchIndexer: SearchIndexer | null = null;
@@ -772,19 +995,36 @@ export class BoucleStore {
     }));
   }
 
-  /** Give a brand-new database a representative synthetic board. */
+  /** Give a brand-new database a representative synthetic board plus recent completed history. */
   private seedTickets(): void {
     const count = this.db.prepare(`SELECT COUNT(*) AS n FROM tickets`).get() as { n: number };
     if (count.n !== 0) return;
-    for (const seed of DEFAULT_TICKETS) {
+    for (const seed of [...DEFAULT_TICKETS, ...HISTORICAL_TICKETS]) {
       const ticket = this.upsert(seed);
-      if (seed.status === "inbox") continue;
-      const snoozedUntil =
-        seed.status === "snoozed"
-          ? new Date(Date.now() + (seed.snoozeDays ?? 1) * DAY_MS).toISOString()
-          : null;
-      this.transition(ticket.ticketId, seed.status, snoozedUntil, "Synthetic first-boot seed", seed.workRef);
+      if (seed.status !== "inbox") {
+        const snoozedUntil =
+          seed.status === "snoozed"
+            ? new Date(Date.now() + (seed.snoozeDays ?? 1) * DAY_MS).toISOString()
+            : null;
+        this.transition(ticket.ticketId, seed.status, snoozedUntil, "Synthetic first-boot seed", seed.workRef);
+      }
+      if (seed.doneDaysAgo != null) {
+        const doneIso = new Date(Date.now() - seed.doneDaysAgo * DAY_MS).toISOString();
+        const createdIso = new Date(Date.now() - (seed.createdDaysAgo ?? seed.doneDaysAgo + 4) * DAY_MS).toISOString();
+        this.backdateSeededTicket(ticket.ticketId, createdIso, doneIso);
+      }
     }
+  }
+
+  /**
+   * Rewrite a freshly-seeded ticket's timestamps into the past so the board looks lived-in:
+   * the row's created/updated dates and its events (creation vs. the status→done change) move
+   * to the given instants. Only ever called from the first-boot seed.
+   */
+  private backdateSeededTicket(ticketId: string, createdIso: string, doneIso: string): void {
+    this.db.prepare(`UPDATE tickets SET created_at = ?, updated_at = ? WHERE ticket_id = ?`).run(createdIso, doneIso, ticketId);
+    this.db.prepare(`UPDATE ticket_events SET created_at = ? WHERE ticket_id = ? AND kind = 'created'`).run(createdIso, ticketId);
+    this.db.prepare(`UPDATE ticket_events SET created_at = ? WHERE ticket_id = ? AND kind <> 'created'`).run(doneIso, ticketId);
   }
 
   /** Create a loop with the given name only if none exists yet (survives restarts on existing DBs). */
