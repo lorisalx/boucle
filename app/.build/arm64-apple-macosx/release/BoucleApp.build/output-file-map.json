@@ -1,0 +1,73 @@
+{
+  "": {
+    "dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp.d",
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp.o",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/primary.swiftdeps"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/AudioTrackWriter.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/AudioTrackWriter.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/AudioTrackWriter~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/AudioTrackWriter.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/AudioTrackWriter.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/BoucleApp.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/BoucleApp.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/CalendarContext.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CalendarContext.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CalendarContext~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CalendarContext.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CalendarContext.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/CockpitView.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CockpitView.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CockpitView~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CockpitView.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/CockpitView.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/MeetingNote.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MeetingNote.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MeetingNote~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MeetingNote.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MeetingNote.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/MenuBarContent.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MenuBarContent.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MenuBarContent~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MenuBarContent.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MenuBarContent.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/MicCapture.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MicCapture.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MicCapture~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MicCapture.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/MicCapture.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/Notifier.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Notifier.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Notifier~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Notifier.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Notifier.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/Recorder.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Recorder.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Recorder~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Recorder.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Recorder.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/SystemAudioCapture.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/SystemAudioCapture.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/SystemAudioCapture~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/SystemAudioCapture.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/SystemAudioCapture.dia"
+  },
+  "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/Sources/BoucleApp/Transcriber.swift": {
+    "object": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Transcriber.swift.o",
+    "swiftmodule": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Transcriber~partial.swiftmodule",
+    "swift-dependencies": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Transcriber.swiftdeps",
+    "diagnostics": "/Users/loris.alexandre@dataiku.com/Documents/dataiku/boucle/app/.build/arm64-apple-macosx/release/BoucleApp.build/Transcriber.dia"
+  }
+}

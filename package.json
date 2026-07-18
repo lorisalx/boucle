@@ -1,0 +1,29 @@
+{
+  "name": "boucle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Boucle — a local chief-of-staff: capture asks, rank what's next, spawn agent chats in t3code.",
+  "bin": {
+    "boucle": "src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "cli": "node src/cli.ts",
+    "serve": "node src/server.ts"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@hono/mcp": "^0.3.0",
+    "@hono/node-server": "^2.0.6",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "hono": "^4.12.27",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Boucle</string>
+    <key>CFBundleDisplayName</key>
+    <string>Boucle</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.loris.boucle</string>
+    <key>CFBundleExecutable</key>
+    <string>BoucleApp</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- Présence dans le Dock : LSUIElement absent/false (contrairement à une app menu bar-only). -->
+    <key>LSUIElement</key>
+    <false/>
+    <!-- Requis pour la capture micro (étape capture 2 pistes). -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Boucle enregistre votre micro pour transcrire vos réunions.</string>
+    <!-- Requis pour détecter le meeting en cours + participants via EventKit. -->
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Boucle lit votre agenda pour nommer la réunion en cours et ses participants.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Boucle lit votre agenda pour nommer la réunion en cours et ses participants.</string>
+</dict>
+</plist>
