@@ -569,7 +569,7 @@ export function Projects() {
         </div>
       ) : null}
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[290px_minmax(0,1fr)_330px]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[240px_minmax(0,1fr)_280px] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
         <aside className="min-h-0 rounded-lg border border-border bg-surface p-2">
           <div className="flex max-h-[75vh] flex-col gap-1 overflow-auto pr-1">
             {filtered.map((project) => (
@@ -590,7 +590,7 @@ export function Projects() {
           {selected ? (
             <>
               <div className="flex flex-wrap items-start gap-3">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-60 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2.5">
                     <ProjectStatusSelect value={selected.status} onChange={(s) => setStatus(selected.projectId, s)} />
                     <span className="text-xs text-dim" title="Raw status in the gbrain frontmatter">

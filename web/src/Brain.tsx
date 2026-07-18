@@ -28,15 +28,21 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "./components/ui/message-scroller.tsx";
+import { BrainMarkdown, type WikiLinkProps } from "./Markdown.tsx";
 import { Button, Tag, cx } from "./ui.tsx";
 
 const STORAGE_KEY = "brainChatId";
 const PREFILL_KEY = "brainPrefill";
 const EXAMPLES = [
-  "What moved on Brumeline's hiring project this week?",
-  "Which meetings mention the investor update?",
-  "What are the open tickets for launch prep?",
+  "Where does the partner portal beta stand, and who is waiting on what?",
+  "Which meetings discussed the renewal alert thresholds?",
+  "What are the riskiest open items on the Helium migration?",
 ] as const;
+
+const EMPTY_WIKI: WikiLinkProps = {
+  knownProjects: new Set<string>(),
+  onOpenProject: () => {},
+};
 
 function readHashPrefill(): string {
   const hash = window.location.hash;
@@ -212,7 +218,11 @@ export function Brain() {
                             {entry.role === "assistant" ? <MessageHeader>Brain</MessageHeader> : null}
                             <Bubble variant={entry.role === "user" ? "muted" : "ghost"} align={entry.role === "user" ? "end" : "start"}>
                               <BubbleContent className={entry.role === "user" ? "rounded-2xl px-4 py-2.5 text-[14px]" : "px-0 py-0 text-[14px] leading-7 text-fg"}>
-                                <div className="whitespace-pre-wrap">{entry.text}</div>
+                                {entry.role === "assistant" ? (
+                                  <BrainMarkdown text={entry.text} wiki={EMPTY_WIKI} skipTitle={false} />
+                                ) : (
+                                  <div className="whitespace-pre-wrap">{entry.text}</div>
+                                )}
                               </BubbleContent>
                             </Bubble>
                           </MessageContent>

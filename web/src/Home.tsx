@@ -615,7 +615,9 @@ export function Home() {
           <p className="text-xs text-dim">
             {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </p>
-          <h1 className="text-[22px] font-bold tracking-tight text-fg">Bonjour, Nora</h1>
+          <h1 className="text-[22px] font-bold tracking-tight text-fg">
+            {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"}, Nora
+          </h1>
           <p className="mt-0.5 text-xs tabular-nums text-muted">
             {board.length} projects · {activeCount} active · {sleepingCount} sleeping
             {smartRunning > 0 ? (

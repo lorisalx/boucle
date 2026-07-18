@@ -344,11 +344,21 @@ export class BrainSearch implements SearchIndexer {
     const semantic = await this.vectorSearch(query);
     const scores = new Map<string, number>();
     const documents = new Map<string, RankedDocument>();
-    const add = (rows: RankedDocument[]) => rows.forEach((row, index) => {
-      const key = `${row.source}\0${row.docId}`;
-      scores.set(key, (scores.get(key) ?? 0) + 1 / (RRF_K + index + 1));
-      if (!documents.has(key)) documents.set(key, row);
-    });
+    // RRF per DOCUMENT, not per chunk: only a doc's best-ranked chunk counts in each
+    // method, otherwise long multi-chunk pages stack tiny contributions and drown
+    // out exact-match single-chunk tickets.
+    const add = (rows: RankedDocument[]) => {
+      const seen = new Set<string>();
+      let rank = 0;
+      for (const row of rows) {
+        const key = `${row.source}\0${row.docId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        scores.set(key, (scores.get(key) ?? 0) + 1 / (RRF_K + rank + 1));
+        rank += 1;
+        if (!documents.has(key)) documents.set(key, row);
+      }
+    };
     add(lexical);
     add(semantic);
     const results = [...scores.entries()]

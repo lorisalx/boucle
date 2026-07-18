@@ -90,10 +90,12 @@ export function Palette() {
     return () => clearTimeout(timer);
   }, [query]);
 
-  const results = useMemo(
-    () => (response?.results ?? []).filter((result) => filter === null || result.source === filter),
-    [filter, response],
-  );
+  // Keyboard order must match display order (grouped by source), not raw score order —
+  // otherwise ↑↓ hops around the grouped list invisibly.
+  const results = useMemo(() => {
+    const matching = (response?.results ?? []).filter((result) => filter === null || result.source === filter);
+    return SOURCE_ORDER.flatMap((source) => matching.filter((result) => result.source === source));
+  }, [filter, response]);
   const actionCount = results.length + 2;
 
   const capture = () => {
@@ -112,16 +114,27 @@ export function Palette() {
       .finally(() => setCapturing(false));
   };
 
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+
+  const openResult = (url: string) => {
+    close();
+    assignResult(url);
+  };
+
   const askBrain = () => {
     const text = query.trim();
     if (!text) return;
     sessionStorage.setItem("brainPrefill", text);
+    close();
     window.location.assign("/#/brain");
   };
 
   const activate = (index: number) => {
     const result = results[index];
-    if (result) assignResult(result.url);
+    if (result) openResult(result.url);
     else if (index === results.length) capture();
     else askBrain();
   };
@@ -200,8 +213,11 @@ export function Palette() {
                     <button
                       key={`${result.source}:${result.id}:${result.url}`}
                       type="button"
+                      ref={(el) => {
+                        if (el && selected === index) el.scrollIntoView({ block: "nearest" });
+                      }}
                       onMouseEnter={() => setSelected(index)}
-                      onClick={() => assignResult(result.url)}
+                      onClick={() => openResult(result.url)}
                       className={cx(
                         "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left",
                         selected === index ? "bg-side" : "hover:bg-side/70",

@@ -54,7 +54,7 @@ export function mcpConfigToml(opts: { url: string; token: string; cliPath: strin
   return `# HTTP transport — the boucle server must be running, BOUCLE_MCP_TOKEN set in your env:
 mcp_servers = [{ name = "boucle", transport = "streamable-http", url = "${opts.url}", auth = { type = "static", api_key_env = "BOUCLE_MCP_TOKEN", api_key_header = "Authorization", api_key_format = "Bearer {token}" } }]
 
-# --- or stdio transport (no running server / token needed) ---
+# --- or stdio transport (no running server / token needed; run from the repo root) ---
 # mcp_servers = [{ name = "boucle", transport = "stdio", command = "node", args = ["${opts.cliPath}", "mcp"], env = { BOUCLE_DB = "${opts.dbPath}" } }]
 `;
 }

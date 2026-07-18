@@ -647,11 +647,13 @@ app.all("/mcp", async (c) => {
   return transport.handleRequest(c);
 });
 
-const CLI_PATH = fileURLToPath(new URL("./cli.ts", import.meta.url));
+// Display paths are repo-relative / $HOME-based: raw absolute paths would leak
+// the machine username and folder layout into the UI of a fully synthetic demo.
 app.get("/api/mcp-info", (c) => {
   const token = getMcpToken(store);
   const url = `http://127.0.0.1:${BOUCLE_PORT}/mcp`;
-  return c.json({ url, token, configToml: mcpConfigToml({ url, token, cliPath: CLI_PATH, dbPath }) });
+  const displayDbPath = dbPath.replace(process.env.HOME ?? " ", "$HOME");
+  return c.json({ url, token, configToml: mcpConfigToml({ url, token, cliPath: "src/cli.ts", dbPath: displayDbPath }) });
 });
 
 // Static web (built by Vite into ./web/dist), with SPA fallback.
