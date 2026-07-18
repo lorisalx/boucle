@@ -240,6 +240,14 @@ export const api = {
     ),
   smartCapture: (text: string, project?: string | null) =>
     post("/api/capture/smart", { text, project }).then((r) => json<{ ok: boolean; batchId: string }>(r)),
+  voiceCapture: (audio: Blob, filename: string, project?: string | null) => {
+    const body = new FormData();
+    body.append("file", audio, filename);
+    if (project) body.append("project", project);
+    return fetch("/api/capture/voice", { method: "POST", body }).then((r) =>
+      json<{ ok: boolean; batchId: string; transcript: string }>(r),
+    );
+  },
   smartCaptureRuns: () =>
     fetch("/api/capture/smart").then((r) =>
       json<Array<{ batchId: string; status: string; startedAt: string; finishedAt: string | null }>>(r),

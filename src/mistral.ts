@@ -30,6 +30,10 @@ interface ConversationHistory {
   readonly entries: unknown[];
 }
 
+interface TranscriptionResponse {
+  readonly text: string;
+}
+
 export interface ChatEntry {
   readonly role: "user" | "assistant" | "tool";
   readonly text: string;
@@ -48,19 +52,30 @@ function apiKey(): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("authorization", `Bearer ${apiKey()}`);
+  if (!(init?.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      authorization: `Bearer ${apiKey()}`,
-      "content-type": "application/json",
-      ...init?.headers,
-    },
+    headers,
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`Mistral Conversations API failed (${response.status}): ${detail.slice(0, 300)}`);
+    throw new Error(`Mistral API failed (${response.status}): ${detail.slice(0, 300)}`);
   }
   return response.json() as Promise<T>;
+}
+
+export async function transcribe(file: Blob, filename: string): Promise<string> {
+  const body = new FormData();
+  body.append("file", file, filename);
+  body.append("model", "voxtral-mini-latest");
+  const response = await request<TranscriptionResponse>("/v1/audio/transcriptions", { method: "POST", body });
+  const text = response.text?.trim();
+  if (!text) throw new Error("Mistral transcription returned no text.");
+  return text;
 }
 
 function isFunctionCall(entry: unknown): entry is FunctionCallEntry {

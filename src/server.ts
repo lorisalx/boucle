@@ -33,6 +33,7 @@ import {
   getMistralTranscript,
   spawnMistralChat,
   spawnMistralProjectChat,
+  transcribe,
 } from "./mistral.ts";
 import { createClickupTask, getClickupConfig } from "./clickup.ts";
 import {
@@ -415,17 +416,41 @@ app.post("/api/tickets/:id/clickup", async (c) => {
 // Smart capture — paste raw text (a Slack message, meeting notes…); a one-shot
 // Vibe run splits it into typed items, routes them to projects, and merges with
 // existing open tickets instead of duplicating. Async: poll GET /api/capture/smart.
-app.post("/api/capture/smart", async (c) => {
-  const body = (await c.req.json()) as { text: string; project?: string | null };
-  const text = (body.text ?? "").trim();
-  if (!text) return c.json({ error: "text required" }, 400);
+function startSmartCapture(text: string, project: string | null): { ok: true; batchId: string } {
   const batchId = randomUUID().slice(0, 8);
   const projects = listProjects(store.listOpen(), store.listProjectMeta())
     .filter((p) => p.status === "in_progress" || p.status === "scoping" || p.openTicketCount > 0)
     .map((p) => `- ${p.projectId} — ${p.title}`)
     .join("\n");
-  scheduler.smartCapture(batchId, buildSmartCapturePrompt(text, body.project ?? null, projects, batchId));
-  return c.json({ ok: true, batchId }, 202);
+  scheduler.smartCapture(batchId, buildSmartCapturePrompt(text, project, projects, batchId));
+  return { ok: true, batchId };
+}
+
+app.post("/api/capture/smart", async (c) => {
+  const body = (await c.req.json()) as { text: string; project?: string | null };
+  const text = (body.text ?? "").trim();
+  if (!text) return c.json({ error: "text required" }, 400);
+  return c.json(startSmartCapture(text, body.project ?? null), 202);
+});
+
+app.post("/api/capture/voice", async (c) => {
+  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ error: "multipart form data required" }, 400);
+  }
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return c.json({ error: "audio file required" }, 400);
+  const projectValue = form.get("project");
+  const project = typeof projectValue === "string" && projectValue.trim() ? projectValue.trim() : null;
+  try {
+    const transcript = await transcribe(file, file.name || "capture.webm");
+    return c.json({ ...startSmartCapture(transcript, project), transcript }, 202);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
 });
 
 app.get("/api/capture/smart", (c) => c.json(scheduler.listSmartRuns()));
