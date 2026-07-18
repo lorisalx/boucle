@@ -164,7 +164,7 @@ export function Meetings() {
         <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-surface px-8 py-16 text-center">
           <MicIcon className="size-6 text-dim" />
           <p className="text-sm text-muted">No meetings recorded yet.</p>
-          <p className="text-xs text-dim">Hit “Enregistrer un meeting” in the menu bar to capture one.</p>
+          <p className="text-xs text-dim">Hit “Record a meeting” in the menu bar to capture one.</p>
         </div>
       ) : null}
 

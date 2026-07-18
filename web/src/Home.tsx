@@ -118,7 +118,7 @@ function AutoCaptureToggle() {
 }
 
 // ===============================
-// Activity grid — "ce qui avance"
+// Activity grid — "what is moving forward"
 // ===============================
 
 const ACTIVITY_DAYS = 26;

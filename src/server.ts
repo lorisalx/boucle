@@ -213,7 +213,7 @@ app.post("/api/tickets/:id/set", async (c) => {
 
 app.post("/api/reprioritize", (c) => c.json({ updated: store.reprioritize() }));
 
-// "Ce qui avance" — resolved items per project per day, for the activity grid.
+// "What is moving forward" — resolved items per project per day, for the activity grid.
 app.get("/api/activity", (c) => {
   const days = Number.parseInt(c.req.query("days") ?? "26", 10);
   return c.json(store.activity(Number.isNaN(days) ? 26 : Math.min(Math.max(days, 1), 366)));

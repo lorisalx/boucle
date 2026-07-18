@@ -263,7 +263,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitEnrich();
                 }}
                 rows={2}
-                placeholder="What did the capture get wrong or miss? e.g. the linked project is portail-partenaire; “Noémie” is actually Nora. ⌘↵ to send."
+                placeholder="What did the capture get wrong or miss? e.g. the linked project is partner-portal; “Noémie” is actually Nora. ⌘↵ to send."
                 className="w-full resize-y rounded-md border border-border bg-transparent px-2.5 py-2 text-sm text-fg placeholder:text-dim focus:border-focus focus:outline-none"
               />
               <div className="mt-2 flex items-center gap-3">

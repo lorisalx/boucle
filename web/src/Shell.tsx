@@ -122,7 +122,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <img src="/brand/Mistral-Icon-Gradient-RGB.svg" alt="" className="size-7 shrink-0" />
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-tight text-fg">Boucle</span>
-            <span className="block text-[9px] font-medium uppercase tracking-[0.08em] text-dim">par Mistral</span>
+            <span className="block text-[9px] font-medium uppercase tracking-[0.08em] text-dim">by Mistral</span>
           </span>
         </button>
 
