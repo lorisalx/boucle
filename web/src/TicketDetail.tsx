@@ -19,7 +19,7 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { api, type Ticket, type TicketEvent, type TicketPriority } from "./api.ts";
 import { navigate } from "./hooks.ts";
-import { isT3CodeThreadId, useActions } from "./Home.tsx";
+import { isMistralConversationId, useActions } from "./Home.tsx";
 import {
   Button,
   KindIcon,
@@ -103,8 +103,6 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "missing">("loading");
-  const [t3codeUrl, setT3codeUrl] = useState("");
-  const [t3codeEnvId, setT3codeEnvId] = useState("");
   const [note, setNote] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -123,13 +121,6 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
   useEffect(() => {
     refetch();
-    api
-      .settings()
-      .then((s) => {
-        setT3codeUrl(s.t3codeUrl);
-        setT3codeEnvId(s.t3codeEnvId);
-      })
-      .catch(() => {});
   }, [refetch]);
 
   // While a codex re-run is in flight, poll so the timeline + updated fields appear live.
@@ -154,7 +145,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
       .finally(() => setSubmitting(false));
   }, [note, submitting, enriching, ticketId, refetch]);
 
-  const actions = useActions(refetch, t3codeUrl, t3codeEnvId);
+  const actions = useActions(refetch);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -227,7 +218,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
             {ticket.workRef ? <LinkedWork workRef={ticket.workRef} /> : null}
 
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-              {isT3CodeThreadId(ticket.threadId) ? (
+              {isMistralConversationId(ticket.threadId) ? (
                 <Button variant="outline" onClick={() => actions.openChat(ticket.threadId)}>
                   <MessageSquareIcon className="size-3.5" /> Open chat
                 </Button>

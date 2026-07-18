@@ -13,7 +13,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
-import { BOUCLE_PORT, SPAWNED_CHAT_GUARDRAILS, resolveDbPath } from "./config.ts";
+import { BOUCLE_PORT, SPAWNED_CHAT_GUARDRAILS, isMistralConfigured, resolveDbPath } from "./config.ts";
 import {
   BoucleStore,
   type CreateLoopInput,
@@ -28,7 +28,12 @@ import {
 } from "./store.ts";
 import { LoopScheduler } from "./scheduler.ts";
 import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
-import { fetchT3CodeEnvironmentId, getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
+import {
+  appendMistralMessage,
+  getMistralTranscript,
+  spawnMistralChat,
+  spawnMistralProjectChat,
+} from "./mistral.ts";
 import { createClickupTask, getClickupConfig } from "./clickup.ts";
 import {
   addTimelineEntry,
@@ -111,23 +116,16 @@ app.post("/api/projects/:id/timeline", async (c) => {
   return c.json({ timeline });
 });
 
-// "Brief me" — spawn a read-only t3code chat that gathers gbrain + ticket context
+// "Brief me" — spawn a read-only Mistral chat with synthetic project + ticket context
 // for one project and reports where it stands.
 app.post("/api/projects/:id/brief", async (c) => {
   const id = c.req.param("id");
   if (!isValidProjectId(id)) return c.json({ error: "invalid project id" }, 400);
-  const cfg = getT3CodeConfig(store);
-  if (cfg === null) {
-    return c.json({ error: "t3code not configured. Set its URL + token in Settings." }, 400);
-  }
+  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
   const project = listProjects(store.listOpen(), store.listProjectMeta()).find((p) => p.projectId === id);
   if (!project) return c.json({ error: "project not found" }, 404);
   try {
-    const result = await spawnT3CodeChat(cfg, {
-      defaultProject: store.getMeta("defaultProject") ?? "dataiku",
-      title: `Brief: ${project.title}`,
-      prompt: buildBriefPrompt(project),
-    });
+    const result = await spawnMistralProjectChat(store, `Brief: ${project.title}`, buildBriefPrompt(project));
     return c.json(result);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
@@ -139,10 +137,10 @@ function buildBriefPrompt(p: ProjectSummary): string {
     .map((t) => `- [${t.status}] ${t.title}${t.nextAction ? ` — next: ${t.nextAction}` : ""}`)
     .join("\n");
   return [
-    `Brief Loris on the "${p.title}" project (gbrain slug: projects/${p.projectId}). He wants to walk into it cold and know exactly where it stands.`,
+    `Brief Nora on the "${p.title}" project (synthetic brain slug: projects/${p.projectId}). She wants to walk into it cold and know exactly where it stands.`,
     "",
     "Do this, read-only:",
-    `1. Read the gbrain page (\`gbrain get projects/${p.projectId}\`), its backlinks (\`gbrain backlinks projects/${p.projectId}\`), and any recent related meeting notes in the brain's meetings/ folder.`,
+    `1. Use project_page_read for ${p.projectId}. Work only from the synthetic project page and Boucle tickets available through your tools.`,
     "2. Cross-check the open Boucle tickets below against the page's State/Timeline.",
     "",
     "Open Boucle tickets:",
@@ -288,29 +286,16 @@ app.get("/api/loops/:id/runs", (c) => {
   return c.json(store.listRuns(c.req.param("id"), limit));
 });
 
-app.get("/api/settings", async (c) => {
-  const cfg = getT3CodeConfig(store);
-  const t3codeEnvId = cfg !== null ? await fetchT3CodeEnvironmentId(cfg) : "";
+app.get("/api/settings", (c) => {
   return c.json({
-    defaultProject: store.getMeta("defaultProject") ?? "dataiku",
-    t3codeUrl: store.getMeta("t3codeUrl") ?? "",
-    t3codeEnvId,
-    t3codeConfigured: cfg !== null,
+    mistralConfigured: isMistralConfigured(),
     clickupConfigured: getClickupConfig(store) !== null,
   });
 });
 app.post("/api/settings", async (c) => {
   const body = (await c.req.json()) as Partial<{
-    defaultProject: string;
-    t3codeUrl: string;
-    t3codeToken: string;
     clickupToken: string;
   }>;
-  if (body.defaultProject !== undefined) store.setMeta("defaultProject", body.defaultProject);
-  if (body.t3codeUrl !== undefined) store.setMeta("t3codeUrl", body.t3codeUrl);
-  if (body.t3codeToken !== undefined && body.t3codeToken.length > 0) {
-    store.setMeta("t3codeToken", body.t3codeToken);
-  }
   if (body.clickupToken !== undefined && body.clickupToken.length > 0) {
     store.setMeta("clickupToken", body.clickupToken);
   }
@@ -320,25 +305,16 @@ app.post("/api/settings", async (c) => {
 app.post("/api/tickets/:id/spawn-chat", async (c) => {
   const ticket = store.getById(c.req.param("id"));
   if (!ticket) return c.json({ error: "ticket not found" }, 404);
-  const cfg = getT3CodeConfig(store);
-  if (cfg === null) {
-    return c.json({ error: "t3code not configured. Set its URL + token in Settings." }, 400);
-  }
-  const prompt = buildPrompt(ticket);
+  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
   try {
-    const result = await spawnT3CodeChat(cfg, {
-      defaultProject: store.getMeta("defaultProject") ?? "dataiku",
-      title: ticket.title,
-      prompt,
-    });
-    store.setFields({ ticketId: ticket.ticketId, threadId: result.threadId });
+    const result = await spawnMistralChat(store, ticket);
     return c.json(result);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
 });
 
-// Manually create an item. For tasks/scopes we normally kick off a t3code chat that
+// Manually create an item. For tasks/scopes we normally kick off a Mistral chat that
 // researches and writes the description; quick-capture passes chat:false for an
 // instant, silent create (ideas especially).
 app.post("/api/epics", async (c) => {
@@ -370,17 +346,12 @@ app.post("/api/epics", async (c) => {
   if (!wantsChat && !ticket.project && body.autoRoute) {
     scheduler.smartCapture(randomUUID().slice(0, 8), buildRoutePrompt(ticket));
   }
-  const cfg = getT3CodeConfig(store);
-  if (!wantsChat || cfg === null) {
+  if (!wantsChat || !isMistralConfigured()) {
     return c.json({ ticket, openUrl: null, chat: false });
   }
   try {
-    const result = await spawnT3CodeChat(cfg, {
-      defaultProject: store.getMeta("defaultProject") ?? "dataiku",
-      title: ticket.title,
-      prompt: buildDescribePrompt(ticket),
-    });
-    const updated = store.setFields({ ticketId: ticket.ticketId, threadId: result.threadId });
+    const result = await spawnMistralChat(store, ticket, buildDescribePrompt(ticket));
+    const updated = store.getById(ticket.ticketId)!;
     return c.json({ ticket: updated, openUrl: result.openUrl, chat: true });
   } catch (error) {
     // The EPIC exists even if the describe-chat could not spawn — surface both.
@@ -551,9 +522,8 @@ function buildDescribePrompt(t: Ticket): string {
     `- project: ${t.project ?? "— (figure out the right gbrain project slug if you can)"}`,
     "",
     "Do this:",
-    "1. Gather context from the connectors (Slack, Gmail, Calendar, Drive/Docs, ClickUp) and the local gbrain " +
-      "in /Users/loris.alexandre@dataiku.com/Documents/dataiku to understand what this EPIC really is: the goal, " +
-      "who's involved, current state, blockers, the right project, and a concrete next action.",
+    "1. Use the provided Boucle tools and synthetic fake-brain project pages to understand what this EPIC really is: " +
+      "the goal, who's involved, current state, blockers, the right project, and a concrete next action.",
     "2. Call ticket_get(ticketId) for the latest, then ticket_set(ticketId, …) to fill in a clear `body` " +
       "(the description), `nextAction`, `project` (gbrain slug), and a `bucket` " +
       "(urgent / to_do_next / cool_to_do / maybe_one_day) reflecting how pressing it is.",
@@ -565,18 +535,29 @@ function buildDescribePrompt(t: Ticket): string {
   return lines.join("\n");
 }
 
-function buildPrompt(t: Ticket): string {
-  const lines = [`Help me with this task: ${t.title}`];
-  if (t.body.trim().length > 0) lines.push("", t.body.trim());
-  const meta: string[] = [];
-  if (t.project) meta.push(`Project: ${t.project}`);
-  if (t.requester) meta.push(`Requested by: ${t.requester}`);
-  meta.push(`Source: ${t.source}${t.permalink ? ` — ${t.permalink}` : ""}`);
-  if (t.nextAction) meta.push(`Next action: ${t.nextAction}`);
-  if (meta.length > 0) lines.push("", ...meta.map((m) => `- ${m}`));
-  lines.push("", SPAWNED_CHAT_GUARDRAILS);
-  return lines.join("\n");
-}
+app.get("/api/chats/:conversationId", async (c) => {
+  const conversationId = c.req.param("conversationId");
+  try {
+    const transcript = await getMistralTranscript(conversationId);
+    return c.json({ ...transcript, ticket: store.getByThreadId(conversationId) });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
+
+app.post("/api/chats/:conversationId/messages", async (c) => {
+  const conversationId = c.req.param("conversationId");
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string };
+  const text = (body.text ?? "").trim();
+  if (text.length === 0) return c.json({ error: "text required" }, 400);
+  try {
+    await appendMistralMessage(store, conversationId, text);
+    const transcript = await getMistralTranscript(conversationId);
+    return c.json({ ...transcript, ticket: store.getByThreadId(conversationId) });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
 
 // MCP — BOUCLE's tools for Codex/Claude over HTTP (bearer-gated, one server per request).
 app.all("/mcp", async (c) => {

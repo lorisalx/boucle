@@ -9,11 +9,8 @@ const INPUT_CLASS =
   "w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm text-fg outline-none placeholder:text-dim focus:border-focus";
 
 export function Settings() {
-  const [defaultProject, setDefaultProject] = useState("");
-  const [t3codeUrl, setT3codeUrl] = useState("");
-  const [t3codeToken, setT3codeToken] = useState("");
   const [clickupToken, setClickupToken] = useState("");
-  const [configured, setConfigured] = useState(false);
+  const [mistralConfigured, setMistralConfigured] = useState(false);
   const [clickupConfigured, setClickupConfigured] = useState(false);
   const [saved, setSaved] = useState(false);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
@@ -21,9 +18,7 @@ export function Settings() {
 
   useEffect(() => {
     api.settings().then((s) => {
-      setDefaultProject(s.defaultProject);
-      setT3codeUrl(s.t3codeUrl);
-      setConfigured(s.t3codeConfigured);
+      setMistralConfigured(s.mistralConfigured);
       setClickupConfigured(s.clickupConfigured);
     });
     api.mcpInfo().then(setMcp).catch(() => {});
@@ -38,15 +33,13 @@ export function Settings() {
   };
 
   const save = () => {
-    const patch: Record<string, string> = { defaultProject, t3codeUrl };
-    if (t3codeToken.trim().length > 0) patch.t3codeToken = t3codeToken.trim();
+    const patch: Record<string, string> = {};
     if (clickupToken.trim().length > 0) patch.clickupToken = clickupToken.trim();
     api.saveSettings(patch).then(() => {
       setSaved(true);
-      setT3codeToken("");
       setClickupToken("");
       api.settings().then((s) => {
-        setConfigured(s.t3codeConfigured);
+        setMistralConfigured(s.mistralConfigured);
         setClickupConfigured(s.clickupConfigured);
       });
       setTimeout(() => setSaved(false), 1500);
@@ -69,48 +62,18 @@ export function Settings() {
       <h1 className="mb-6 text-xl font-semibold tracking-tight text-fg">Settings</h1>
 
       <div className="flex flex-col gap-6">
-        <Field
-          label="Default project"
-          hint="t3code project that Start chat uses when a ticket's project doesn't match a repo."
-        >
-          <input
-            value={defaultProject}
-            onChange={(e) => setDefaultProject(e.target.value)}
-            spellCheck={false}
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <Field
-          label="t3code URL"
-          hint="Base URL of your running t3code (e.g. http://localhost:5733). Used to spawn chats."
-        >
-          <input
-            value={t3codeUrl}
-            onChange={(e) => setT3codeUrl(e.target.value)}
-            placeholder="http://localhost:5733"
-            spellCheck={false}
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <Field
-          label="t3code token"
-          hint={
-            configured
-              ? "A token is saved. Leave blank to keep it, or paste a new one to replace."
-              : "Bearer token: run `t3 auth session issue --token-only` in t3code and paste it here."
-          }
-        >
-          <input
-            type="password"
-            value={t3codeToken}
-            onChange={(e) => setT3codeToken(e.target.value)}
-            placeholder={configured ? "•••••••• (saved)" : "paste bearer token"}
-            spellCheck={false}
-            className={INPUT_CLASS}
-          />
-        </Field>
+        <div className="rounded-lg border border-border bg-surface px-4 py-3">
+          <h2 className="text-sm font-medium text-fg">Mistral</h2>
+          <p className="mt-1 text-xs text-muted">
+            Spawned chats use the Conversations API. Set <code className="font-mono">MISTRAL_API_KEY</code> in
+            the server environment; Boucle never exposes or stores the key.
+          </p>
+          <div className="mt-3">
+            <Status tone={mistralConfigured ? "success" : "neutral"}>
+              API key {mistralConfigured ? "present" : "not configured"}
+            </Status>
+          </div>
+        </div>
 
         <Field
           label="ClickUp API key"
@@ -136,8 +99,8 @@ export function Settings() {
           </Button>
           {saved ? <span className="text-xs text-success">Saved.</span> : null}
           <span className="ml-auto flex items-center gap-3 text-xs">
-            <Status tone={configured ? "success" : "neutral"}>
-              t3code {configured ? "connected" : "not configured"}
+            <Status tone={mistralConfigured ? "success" : "neutral"}>
+              Mistral {mistralConfigured ? "ready" : "not configured"}
             </Status>
             <Status tone={clickupConfigured ? "success" : "neutral"}>
               ClickUp {clickupConfigured ? "connected" : "not configured"}

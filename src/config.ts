@@ -55,7 +55,7 @@ export function resolveMeetingsDir(): string {
   return join(resolveBrainDir(), "meetings");
 }
 
-/** Startup instructions appended to every chat Boucle spawns in t3code. */
+/** Startup instructions appended to every Mistral conversation Boucle spawns. */
 export const SPAWNED_CHAT_GUARDRAILS = `Before anything else, on this first turn:
 - Context: read the relevant files in fake-brain/ for this ticket's topic, project, requester, and recent meetings so you work from current Brumeline knowledge instead of assumptions.
 
@@ -63,15 +63,7 @@ Then, two hard rules for the rest of this conversation:
 - Outbound communication: do NOT send a channel post, thread reply, email, direct message, invitation, or scheduled message without Nora Bellier's explicit approval. Reading and drafting are fine; show the destination and exact text, then wait.
 - Production changes: do NOT deploy, restart, publish, migrate, alter production data, or run a data-writing job in Brumeline's production environment without Nora Bellier's explicit approval. Inspection and dry-runs are fine; state exactly what will change and where, then wait.`;
 
-export interface T3CodeConfig {
-  readonly baseUrl: string;
-  readonly token: string;
-}
-
-/** t3code connection for spawning chats. Configured via env or stored in boucle_meta. */
-export function t3codeConfigFromEnv(): T3CodeConfig | null {
-  const baseUrl = (process.env.BOUCLE_T3CODE_URL ?? "").trim();
-  const token = (process.env.BOUCLE_T3CODE_TOKEN ?? "").trim();
-  if (baseUrl.length === 0 || token.length === 0) return null;
-  return { baseUrl: baseUrl.replace(/\/$/, ""), token };
+/** Presence only; the API key itself is never returned to the web UI or persisted in sqlite. */
+export function isMistralConfigured(): boolean {
+  return (process.env.MISTRAL_API_KEY ?? "").trim().length > 0;
 }

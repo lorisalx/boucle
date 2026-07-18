@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Boucle — a local chief-of-staff: capture asks, rank what's next, spawn agent chats in t3code.",
+  "description": "Boucle — a local chief-of-staff: capture asks, rank what's next, and spawn Mistral agent chats.",
   "bin": {
     "boucle": "src/cli.ts"
   },

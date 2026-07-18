@@ -61,11 +61,20 @@ export interface TicketEvent {
 }
 
 export interface Settings {
-  defaultProject: string;
-  t3codeUrl: string;
-  t3codeEnvId: string;
-  t3codeConfigured: boolean;
+  mistralConfigured: boolean;
   clickupConfigured: boolean;
+}
+
+export interface ChatEntry {
+  role: "user" | "assistant" | "tool";
+  text: string;
+  toolName?: string;
+}
+
+export interface ChatTranscript {
+  conversationId: string;
+  entries: ChatEntry[];
+  ticket: Ticket | null;
 }
 
 export type ProjectStatus = "scoping" | "in_progress" | "backlog" | "on_hold" | "done" | "archived";
@@ -253,9 +262,16 @@ export const api = {
   setLoopState: (enabled: boolean) =>
     post("/api/loop-state", { enabled }).then((r) => json<{ enabled: boolean }>(r)),
   settings: () => fetch("/api/settings").then((r) => json<Settings>(r)),
-  saveSettings: (
-    patch: Partial<{ defaultProject: string; t3codeUrl: string; t3codeToken: string; clickupToken: string }>,
-  ) => post("/api/settings", patch).then((r) => json<{ ok: boolean }>(r)),
+  saveSettings: (patch: Partial<{ clickupToken: string }>) =>
+    post("/api/settings", patch).then((r) => json<{ ok: boolean }>(r)),
+  chat: {
+    get: (conversationId: string) =>
+      fetch(`/api/chats/${encodeURIComponent(conversationId)}`).then((r) => json<ChatTranscript>(r)),
+    send: (conversationId: string, text: string) =>
+      post(`/api/chats/${encodeURIComponent(conversationId)}/messages`, { text }).then((r) =>
+        json<ChatTranscript>(r),
+      ),
+  },
   mcpInfo: () =>
     fetch("/api/mcp-info").then((r) => json<{ url: string; token: string; configToml: string }>(r)),
   loops: {

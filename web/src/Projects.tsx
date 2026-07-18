@@ -35,7 +35,7 @@ import {
 } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
 import { navigate, useHashRoute, useProjects } from "./hooks.ts";
-import { isT3CodeThreadId, useActions } from "./Home.tsx";
+import { isMistralConversationId, useActions } from "./Home.tsx";
 import { BrainMarkdown, renderInline, type WikiLinkProps } from "./Markdown.tsx";
 import {
   Button,
@@ -246,7 +246,7 @@ function TicketTask({ ticket, actions }: { ticket: Ticket; actions: ReturnType<t
         </div>
       </div>
       <div className="mt-2 flex items-center justify-end gap-1 border-t border-border pt-2">
-        {isT3CodeThreadId(ticket.threadId) ? (
+        {isMistralConversationId(ticket.threadId) ? (
           <Button title="Open chat" onClick={() => actions.openChat(ticket.threadId)}>
             <MessageSquareIcon className="size-3.5" /> chat
           </Button>
@@ -417,24 +417,15 @@ export function Projects() {
   const [filter, setFilter] = useState<ProjectFilter>("active");
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<DetailTab>("overview");
-  const [t3codeUrl, setT3codeUrl] = useState("");
-  const [t3codeEnvId, setT3codeEnvId] = useState("");
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [detailFor, setDetailFor] = useState<string | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
   const detailCache = useRef(new Map<string, ProjectDetail>());
-  const actions = useActions(refresh, t3codeUrl, t3codeEnvId);
+  const actions = useActions(refresh);
 
   useEffect(() => {
-    api
-      .settings()
-      .then((s) => {
-        setT3codeUrl(s.t3codeUrl);
-        setT3codeEnvId(s.t3codeEnvId);
-      })
-      .catch(() => {});
     api.activity(STRIP_DAYS).then(setActivity).catch(() => {});
   }, []);
 
@@ -515,7 +506,7 @@ export function Projects() {
     setBriefBusy(true);
     api
       .briefProject(selected.projectId)
-      .then((r) => window.open(r.openUrl, "_blank"))
+      .then((r) => window.location.assign(r.openUrl))
       .catch((e) => alert(`Brief failed: ${e.message ?? e}`))
       .finally(() => setBriefBusy(false));
   };

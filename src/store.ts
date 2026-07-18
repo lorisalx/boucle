@@ -1,7 +1,7 @@
 /**
  * Boucle ticket store — standalone, node:sqlite, zero native deps.
  *
- * Ported from the t3code-embedded TicketStore: deterministic scoring (the loop
+ * Standalone TicketStore: deterministic scoring (the loop
  * assigns priority/effort; we derive a stable rank), dedupe-keyed upsert,
  * lifecycle transitions, a resolution timeline (ticket_events), and a tiny
  * key/value settings table.
@@ -825,6 +825,13 @@ export class BoucleStore {
 
   getByDedupeKey(dedupeKey: string): Ticket | null {
     const row = this.db.prepare(`SELECT ${TICKET_COLUMNS} FROM tickets WHERE dedupe_key = ? LIMIT 1`).get(dedupeKey) as
+      | RawTicket
+      | undefined;
+    return row ? toTicket(row) : null;
+  }
+
+  getByThreadId(threadId: string): Ticket | null {
+    const row = this.db.prepare(`SELECT ${TICKET_COLUMNS} FROM tickets WHERE thread_id = ? LIMIT 1`).get(threadId) as
       | RawTicket
       | undefined;
     return row ? toTicket(row) : null;

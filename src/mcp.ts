@@ -1,5 +1,5 @@
 /**
- * boucle MCP — exposes the ticket store (and the t3code chat handoff) as tools.
+ * boucle MCP — exposes the ticket store (and the Mistral chat handoff) as tools.
  *
  * One registry, served two ways: over HTTP at /mcp (see server.ts) and over stdio
  * (`boucle mcp`, see cli.ts). Loops point Codex/Claude at these tools so a run can
@@ -13,14 +13,11 @@ import { z } from "zod";
 
 import type {
   BoucleStore,
-  ListTicketsFilter,
-  SetTicketFieldsInput,
-  Ticket,
   TicketSourceEvent,
   UpsertTicketInput,
 } from "./store.ts";
-import { SPAWNED_CHAT_GUARDRAILS } from "./config.ts";
-import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
+import { executeBoucleTool } from "./boucle-tools.ts";
+import { spawnMistralChat } from "./mistral.ts";
 
 const SOURCES = ["slack", "gmail", "gcal", "clickup", "manual"] as const;
 const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
@@ -67,20 +64,6 @@ bearer_token = "${opts.token}"
 `;
 }
 
-/** First-user-message prompt for a spawned chat (mirrors server.ts buildPrompt). */
-function buildChatPrompt(t: Ticket): string {
-  const lines = [`Help me with this task: ${t.title}`];
-  if (t.body.trim().length > 0) lines.push("", t.body.trim());
-  const meta: string[] = [];
-  if (t.project) meta.push(`Project: ${t.project}`);
-  if (t.requester) meta.push(`Requested by: ${t.requester}`);
-  meta.push(`Source: ${t.source}${t.permalink ? ` — ${t.permalink}` : ""}`);
-  if (t.nextAction) meta.push(`Next action: ${t.nextAction}`);
-  if (meta.length > 0) lines.push("", ...meta.map((m) => `- ${m}`));
-  lines.push("", SPAWNED_CHAT_GUARDRAILS);
-  return lines.join("\n");
-}
-
 export function createBoucleMcpServer(store: BoucleStore): McpServer {
   const server = new McpServer({ name: "boucle", version: "0.1.0" });
 
@@ -115,7 +98,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
           .nullable()
           .optional()
           .describe(
-            "t3code chat thread UUID. Set automatically by spawn_chat — do NOT set this manually and never put a Slack channel/thread id here.",
+            "Mistral conversation ID. Set automatically by spawn_chat — do NOT set this manually and never put a Slack channel/thread id here.",
           ),
       },
       annotations: { idempotentHint: true },
@@ -135,7 +118,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
       },
       annotations: { readOnlyHint: true },
     },
-    async (args) => ok(store.list(args as ListTicketsFilter)),
+    async (args) => ok(executeBoucleTool(store, "ticket_list", args)),
   );
 
   server.registerTool(
@@ -149,7 +132,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ project, limit }) => ok(store.next(project ?? null, limit ?? 50)),
+    async (args) => ok(executeBoucleTool(store, "ticket_next", args)),
   );
 
   server.registerTool(
@@ -160,10 +143,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
       inputSchema: { ticketId: z.string() },
       annotations: { readOnlyHint: true },
     },
-    async ({ ticketId }) => {
-      const ticket = store.getById(ticketId);
-      return ok({ ticket, events: ticket ? store.listEvents(ticketId) : [] });
-    },
+    async (args) => ok(executeBoucleTool(store, "ticket_get", args)),
   );
 
   server.registerTool(
@@ -188,7 +168,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         clickupTaskId: z.string().nullable().optional(),
       },
     },
-    async (args) => ok(store.setFields(args as SetTicketFieldsInput)),
+    async (args) => ok(executeBoucleTool(store, "ticket_set", args)),
   );
 
   server.registerTool(
@@ -211,8 +191,28 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
           ),
       },
     },
-    async ({ ticketId, toStatus, snoozedUntil, reason, workRef }) =>
-      ok(store.transition(ticketId, toStatus, snoozedUntil ?? null, reason ?? null, workRef ?? null)),
+    async (args) => ok(executeBoucleTool(store, "ticket_transition", args)),
+  );
+
+  server.registerTool(
+    "ticket_comment",
+    {
+      title: "Comment on ticket",
+      description: "Add a note to a ticket's timeline without changing its fields.",
+      inputSchema: { ticketId: z.string(), text: z.string() },
+    },
+    async (args) => ok(executeBoucleTool(store, "ticket_comment", args)),
+  );
+
+  server.registerTool(
+    "project_page_read",
+    {
+      title: "Read project page",
+      description: "Read the synthetic brain page and timeline for a project slug.",
+      inputSchema: { projectId: z.string() },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => ok(executeBoucleTool(store, "project_page_read", args)),
   );
 
   server.registerTool(
@@ -265,21 +265,14 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     {
       title: "Kick off an agent chat",
       description:
-        "Start a Claude/agent conversation in t3code for a ticket and link the thread back to it. Requires t3code configured in Settings. Use for tickets that need agent work (needs=claude/codex).",
+        "Start a Mistral conversation for a ticket and link it back to the ticket. Requires MISTRAL_API_KEY. Use for tickets that need agent work (needs=claude/codex).",
       inputSchema: { ticketId: z.string() },
     },
     async ({ ticketId }) => {
       const ticket = store.getById(ticketId);
       if (!ticket) return ok({ error: "ticket not found" });
-      const cfg = getT3CodeConfig(store);
-      if (cfg === null) return ok({ error: "t3code not configured. Set its URL + token in Settings." });
       try {
-        const result = await spawnT3CodeChat(cfg, {
-          defaultProject: store.getMeta("defaultProject") ?? "dataiku",
-          title: ticket.title,
-          prompt: buildChatPrompt(ticket),
-        });
-        store.setFields({ ticketId, threadId: result.threadId });
+        const result = await spawnMistralChat(store, ticket);
         return ok(result);
       } catch (error) {
         return ok({ error: error instanceof Error ? error.message : String(error) });

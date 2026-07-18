@@ -1,4 +1,5 @@
 import { CaptureModal } from "./Capture.tsx";
+import { Chat } from "./Chat.tsx";
 import { Home } from "./Home.tsx";
 import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
@@ -9,11 +10,13 @@ import { useHashRoute } from "./hooks.ts";
 
 export function App() {
   const hash = useHashRoute();
+  const chatMatch = /^\/chats\/([^/]+)$/.exec(window.location.pathname);
   const ticketMatch = /^#\/ticket\/(.+)$/.exec(hash);
   const loopMatch = /^#\/loops\/(.+)$/.exec(hash);
 
   let view = <Home />;
-  if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
+  if (chatMatch) view = <Chat conversationId={decodeURIComponent(chatMatch[1])} />;
+  else if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
   else if (loopMatch) view = <LoopDetail loopId={loopMatch[1]} />;
   else if (hash.startsWith("#/projects")) view = <Projects />;
   else if (hash.startsWith("#/meetings")) view = <Meetings />;

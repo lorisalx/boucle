@@ -48,12 +48,11 @@ import {
 } from "./ui.tsx";
 
 /**
- * A real t3code thread id is a UUID (set by spawn_chat). The chief loop
- * sometimes writes a Slack channel/thread id into `threadId`, so gate the
- * "Open chat" affordance on the UUID shape to avoid opening a dead link.
+ * Mistral conversation IDs are UUIDs. Gate the chat affordance so old foreign
+ * values that may have landed in threadId do not become broken internal links.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function isT3CodeThreadId(id?: string | null): id is string {
+export function isMistralConversationId(id?: string | null): id is string {
   return typeof id === "string" && UUID_RE.test(id);
 }
 
@@ -70,7 +69,7 @@ function isDormant(t: Ticket): boolean {
   return t.status === "snoozed" || t.bucket === "maybe_one_day";
 }
 
-export function useActions(refresh: () => void, t3codeUrl: string, t3codeEnvId = "primary") {
+export function useActions(refresh: () => void) {
   return useMemo(() => {
     const after = (p: Promise<unknown>) => p.then(refresh).catch((e) => alert(String(e.message ?? e)));
     return {
@@ -91,25 +90,19 @@ export function useActions(refresh: () => void, t3codeUrl: string, t3codeEnvId =
           .catch((e) => alert(`ClickUp failed: ${e.message ?? e}`)),
       cancelClickup: (id: string) => after(api.setFields(id, { wantsClickup: false })),
       openChat: (threadId?: string | null) => {
-        if (!t3codeUrl) {
-          alert("Configure t3code in Settings to open chats.");
-          return;
-        }
-        const env = t3codeEnvId || "primary";
-        const url = isT3CodeThreadId(threadId) ? `${t3codeUrl}/${env}/${threadId}` : t3codeUrl;
-        window.open(url, "_blank");
+        if (isMistralConversationId(threadId)) window.location.assign(`/chats/${threadId}`);
       },
       startChat: (id: string) =>
         api
           .spawnChat(id)
           .then((r) => {
-            window.open(r.openUrl, "_blank");
+            window.location.assign(r.openUrl);
             refresh();
           })
           .catch((e) => alert(`Start chat failed: ${e.message ?? e}`)),
       openDetail: (id: string) => navigate(`#/ticket/${id}`),
     };
-  }, [refresh, t3codeUrl, t3codeEnvId]);
+  }, [refresh]);
 }
 
 type Actions = ReturnType<typeof useActions>;
@@ -288,8 +281,8 @@ function ItemRow({ item, actions, dormant }: { item: Ticket; actions: Actions; d
           </Button>
         ) : (
           <>
-            {isT3CodeThreadId(item.threadId) ? (
-              <Button title="Open chat in t3code" onClick={() => actions.openChat(item.threadId)}>
+            {isMistralConversationId(item.threadId) ? (
+              <Button title="Open Mistral chat" onClick={() => actions.openChat(item.threadId)}>
                 <MessageSquareIcon className="size-3.5 text-success" />
               </Button>
             ) : (
@@ -501,8 +494,6 @@ function isOnBoard(p: ProjectSummary): boolean {
 export function Home() {
   const { projects, status, refresh } = useProjects();
   const { tickets: openTickets, refresh: refreshOpen } = useOpenTickets();
-  const [t3codeUrl, setT3codeUrl] = useState("");
-  const [t3codeEnvId, setT3codeEnvId] = useState("");
   const [activity, setActivity] = useState<ActivityRow[]>([]);
   const [resolved, setResolved] = useState<Ticket[] | null>(null);
   const [showResolved, setShowResolved] = useState(false);
@@ -529,16 +520,9 @@ export function Home() {
     },
     [refresh, refreshOpen],
   );
-  const actions = useActions(refreshAll, t3codeUrl, t3codeEnvId);
+  const actions = useActions(refreshAll);
 
   useEffect(() => {
-    api
-      .settings()
-      .then((s) => {
-        setT3codeUrl(s.t3codeUrl);
-        setT3codeEnvId(s.t3codeEnvId);
-      })
-      .catch(() => {});
     api.activity(ACTIVITY_DAYS).then(setActivity).catch(() => {});
     const onCaptured = () => refreshAll();
     window.addEventListener("boucle:captured", onCaptured);
