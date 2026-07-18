@@ -324,7 +324,7 @@ export function LoopDetail({ loopId }: { loopId: string }) {
                 className={cx(
                   "rounded-md border px-2 py-1 text-xs font-medium",
                   days.includes(d)
-                    ? "border-accent text-accent"
+                    ? "border-accent text-accent-text"
                     : "border-border text-muted hover:border-border-hover hover:text-fg",
                 )}
               >

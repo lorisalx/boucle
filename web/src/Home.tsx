@@ -632,8 +632,12 @@ export function Home() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="grid size-6 shrink-0 place-items-center rounded-md bg-accent text-xs font-semibold text-white">B</span>
-        <span className="text-base font-semibold tracking-tight text-fg">My brain</span>
+        <img
+          src="/brand/Mistral-Icon-Gradient-RGB.svg"
+          alt=""
+          className="size-7 shrink-0"
+        />
+        <span className="text-base font-semibold tracking-tight text-fg">Mistral Boucle</span>
         <span className="hidden whitespace-nowrap font-mono text-xs tabular-nums text-dim sm:inline">
           {board.length} projects · {activeCount} active · {sleepingCount} sleeping
         </span>
@@ -684,7 +688,7 @@ export function Home() {
       >
         <PlusIcon className="size-4 text-dim" />
         <span className="flex-1 text-sm text-muted">
-          Empty your head… idea, task, conv, scope — Boucle files it in the right project
+          Empty your head… idea, task, conv, scope — Mistral Boucle files it in the right project
         </span>
         <kbd className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
       </button>

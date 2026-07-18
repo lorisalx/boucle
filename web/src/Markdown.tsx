@@ -24,7 +24,7 @@ function WikiLink({ target, label, wiki }: { target: string; label: string; wiki
       <button
         onClick={() => wiki.onOpenProject(project)}
         title={`Open project: ${target}`}
-        className="inline text-accent hover:underline"
+        className="inline text-accent-text hover:underline"
       >
         {label}
       </button>

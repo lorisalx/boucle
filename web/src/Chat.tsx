@@ -67,7 +67,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
                     <WrenchIcon className="size-3" /> {entry.text}
                   </span>
                 </summary>
-                <p className="mt-1 text-center">Boucle executed this call locally.</p>
+                <p className="mt-1 text-center">Mistral Boucle executed this call locally.</p>
               </details>
             );
           }
@@ -80,7 +80,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
                   user ? "bg-btn text-btn-fg" : "border border-border bg-surface text-fg",
                 )}
               >
-                {!user ? <BotIcon className="mb-1.5 size-3.5 text-accent" /> : null}
+                {!user ? <BotIcon className="mb-1.5 size-3.5 text-accent-text" /> : null}
                 {entry.text}
               </div>
             </div>

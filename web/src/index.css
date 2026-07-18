@@ -3,7 +3,7 @@
 /*
  * Geist — the Loris Alex tools design system (design.md).
  * Grayscale carries the structure; color is semantic and tiny; borders over
- * shadows. Boucle's accent is indigo (added row in the per-tool accent table).
+ * shadows. Mistral Boucle uses the official Mistral 2026 ramp for its accent.
  */
 
 @theme {
@@ -19,6 +19,7 @@
   --color-success: var(--success);
   --color-danger: var(--danger);
   --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
   --color-btn: var(--btn-primary-bg);
   --color-btn-fg: var(--btn-primary-fg);
   --color-btn-hover: var(--btn-primary-hover);
@@ -37,14 +38,20 @@
   --fg: #171717;
   --muted: #666666;
   --dim: #999999;
-  --link: #0070f3;
-  --focus: #0070f3;
   --success: #00a05a;
   --danger: #e5484d;
-  --accent: #6366f1;
-  --btn-primary-bg: #171717;
+  --brand-yellow: #ffaf01;
+  --brand-amber: #ff8204;
+  --brand-orange: #fa500f;
+  --brand-red: #e61300;
+  --brand-deep-red: #c4001d;
+  --accent: var(--brand-orange);
+  --accent-text: var(--brand-deep-red);
+  --link: var(--brand-deep-red);
+  --focus: var(--brand-orange);
+  --btn-primary-bg: var(--brand-orange);
   --btn-primary-fg: #ffffff;
-  --btn-primary-hover: #383838;
+  --btn-primary-hover: var(--brand-red);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -59,14 +66,20 @@
   --fg: #ededed;
   --muted: #888888;
   --dim: #666666;
-  --link: #3291ff;
-  --focus: #3291ff;
+  --link: #ff8204;
+  --focus: #fa500f;
   --success: #00ca6f;
   --danger: #ff6369;
-  --accent: #818cf8;
-  --btn-primary-bg: #ededed;
-  --btn-primary-fg: #171717;
-  --btn-primary-hover: #cccccc;
+  --brand-yellow: #ffaf01;
+  --brand-amber: #ff8204;
+  --brand-orange: #fa500f;
+  --brand-red: #e61300;
+  --brand-deep-red: #c4001d;
+  --accent: var(--brand-orange);
+  --accent-text: var(--brand-amber);
+  --btn-primary-bg: var(--brand-orange);
+  --btn-primary-fg: #ffffff;
+  --btn-primary-hover: var(--brand-red);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 

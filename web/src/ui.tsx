@@ -39,7 +39,7 @@ export type Tone = "neutral" | "accent" | "success" | "danger" | "warn" | "info"
 
 const TONE_TEXT: Record<Tone, string> = {
   neutral: "text-muted",
-  accent: "text-accent",
+  accent: "text-accent-text",
   success: "text-success",
   danger: "text-danger",
   warn: "text-amber-600 dark:text-amber-400",
@@ -154,7 +154,7 @@ const KIND_ICON_STYLE: Record<TicketKind, string> = {
   task: "text-muted",
   idea: "text-amber-500 dark:text-amber-400",
   conv: "text-success",
-  scope: "text-accent",
+  scope: "text-accent-text",
 };
 
 export function KindIcon({ kind, className }: { kind: TicketKind; className?: string }) {

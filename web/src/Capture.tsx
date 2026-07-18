@@ -344,7 +344,7 @@ export function CaptureModal() {
             className="rounded-md border border-border bg-transparent px-2 py-1 text-xs text-muted outline-none"
           >
             <option value="" className="bg-surface text-fg">
-              ✨ Auto — Boucle routes it
+              ✨ Auto — Mistral Boucle routes it
             </option>
             <option value="__misc" className="bg-surface text-fg">
               Misc (no project)
@@ -378,7 +378,7 @@ export function CaptureModal() {
             <button
               onClick={submitSmart}
               disabled={busy || voiceBusy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10 disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent px-3 py-1.5 text-xs font-medium text-accent-text hover:bg-accent/10 disabled:opacity-40"
             >
               {busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <SparklesIcon className="size-3.5" />}
               AI split &amp; route

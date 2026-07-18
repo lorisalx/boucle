@@ -556,7 +556,7 @@ export function Projects() {
               className={cx(
                 "rounded-md border px-2.5 py-1 text-xs font-medium",
                 filter === item.id
-                  ? "border-accent text-accent"
+                  ? "border-accent text-accent-text"
                   : "border-border text-muted hover:border-border-hover hover:text-fg",
               )}
             >

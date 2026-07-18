@@ -1,9 +1,9 @@
 {
-  "name": "boucle",
+  "name": "mistral-boucle",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Boucle — a local chief-of-staff: capture asks, rank what's next, and spawn Mistral agent chats.",
+  "description": "Boucle rebuilt on the Mistral stack: Vibe CLI, Devstral, Voxtral, and the Agents API.",
   "bin": {
     "boucle": "src/cli.ts"
   },
