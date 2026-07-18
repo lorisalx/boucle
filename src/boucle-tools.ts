@@ -24,6 +24,19 @@ export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
   {
     type: "function",
     function: {
+      name: "brain_search",
+      description: "Search tickets, ticket history, meeting notes, and synthetic brain project pages before creating or merging work.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } },
+        required: ["query"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "ticket_list",
       description: "List Boucle tickets ranked by score, optionally filtered by status, project, or needs.",
       parameters: {
@@ -139,8 +152,10 @@ function requiredString(args: ToolArgs, key: string): string {
 }
 
 /** The single implementation used by MCP registrations and the Mistral relay. */
-export function executeBoucleTool(store: BoucleStore, name: string, args: ToolArgs): unknown {
+export async function executeBoucleTool(store: BoucleStore, name: string, args: ToolArgs): Promise<unknown> {
   switch (name) {
+    case "brain_search":
+      return store.search(requiredString(args, "query"), typeof args.limit === "number" ? args.limit : 20);
     case "ticket_list":
       return store.list(args as ListTicketsFilter);
     case "ticket_next":

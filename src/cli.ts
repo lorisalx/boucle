@@ -80,7 +80,8 @@ function ticketList(tickets: Ticket[]): string {
 }
 
 const json = values.json as boolean;
-const store = new BoucleStore(resolveDbPath());
+const dbPath = resolveDbPath();
+const store = new BoucleStore(dbPath);
 const [group, action] = positionals;
 
 function req(name: string, value: string | undefined): string {
@@ -150,7 +151,10 @@ if (group === "ticket" && action === "upsert") {
 } else if (group === "mcp") {
   // Serve BOUCLE's tools over stdio (for codex/claude `mcp_servers` command/args).
   const { createBoucleMcpServer } = await import("./mcp.ts");
+  const { BrainSearch } = await import("./search.ts");
   const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+  const search = new BrainSearch(dbPath, store);
+  await search.bootstrap();
   const server = createBoucleMcpServer(store);
   await server.connect(new StdioServerTransport());
   // Stays alive on stdin until the client disconnects.

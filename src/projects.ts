@@ -375,9 +375,15 @@ function gbrainCmd(args: string): string {
 }
 
 let reindexTimer: ReturnType<typeof setTimeout> | null = null;
+let searchReindexer: (() => void) | null = null;
+
+export function setBrainSearchReindexer(reindex: () => void): void {
+  searchReindexer = reindex;
+}
 
 /** Fire-and-forget synthetic reindex hook, debounced to follow project edits. */
 export function scheduleBrainReindex(): void {
+  searchReindexer?.();
   if (reindexTimer) clearTimeout(reindexTimer);
   reindexTimer = setTimeout(() => {
     reindexTimer = null;
