@@ -70,7 +70,25 @@ export interface ChatEntry {
 export interface ChatTranscript {
   conversationId: string;
   entries: ChatEntry[];
-  ticket: Ticket | null;
+  ticket?: Ticket | null;
+}
+
+export type SearchSource = "ticket" | "event" | "meeting" | "brain";
+
+export interface SearchResult {
+  source: SearchSource;
+  id: string;
+  title: string;
+  snippet: string;
+  projectId?: string;
+  url: string;
+  score: number;
+}
+
+export interface SearchResponse {
+  query: string;
+  counts: Record<SearchSource, number>;
+  results: SearchResult[];
 }
 
 export interface VibeEntry {
@@ -215,6 +233,8 @@ const post = (path: string, body: unknown) =>
 
 export const api = {
   meta: () => fetch("/api/meta").then((r) => json<{ workdir: string }>(r)),
+  search: (query: string) =>
+    fetch(`/api/search?q=${encodeURIComponent(query)}`).then((r) => json<SearchResponse>(r)),
   open: () => fetch("/api/tickets/open").then((r) => json<Ticket[]>(r)),
   projects: () => fetch("/api/projects").then((r) => json<ProjectSummary[]>(r)),
   meetings: () => fetch("/api/meetings").then((r) => json<Meeting[]>(r)),
@@ -288,6 +308,12 @@ export const api = {
       post(`/api/chats/${encodeURIComponent(conversationId)}/messages`, { text }).then((r) =>
         json<ChatTranscript>(r),
       ),
+  },
+  brainChat: {
+    get: (conversationId: string) =>
+      fetch(`/api/brain-chat/${encodeURIComponent(conversationId)}`).then((r) => json<ChatTranscript>(r)),
+    send: (text: string, conversationId?: string) =>
+      post("/api/brain-chat", { text, conversationId }).then((r) => json<ChatTranscript>(r)),
   },
   vibe: {
     get: (scope: string, sessionId: string) =>

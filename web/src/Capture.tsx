@@ -1,5 +1,5 @@
 /**
- * Quick capture (⌘K) — dump anything from your head into the right project with the
+ * Quick capture — dump anything from your head into the right project with the
  * right kind, without leaving whatever page you're on. Replaces the Slack DM-to-self.
  *
  * Two paths out:
@@ -74,10 +74,6 @@ export function CaptureModal() {
       setOpen(true);
     };
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        openCapture();
-      }
       if (e.key === "Escape") setOpen(false);
     };
     window.addEventListener("boucle:capture", onOpen);

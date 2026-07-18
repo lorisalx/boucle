@@ -1,8 +1,11 @@
+import { Brain } from "./Brain.tsx";
+import { Brain as BrainGraph } from "./BrainGraph.tsx";
 import { CaptureModal } from "./Capture.tsx";
 import { Chat } from "./Chat.tsx";
 import { Home } from "./Home.tsx";
 import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
+import { Palette } from "./Palette.tsx";
 import { Projects } from "./Projects.tsx";
 import { Settings } from "./Settings.tsx";
 import { Shell } from "./Shell.tsx";
@@ -24,6 +27,8 @@ export function App() {
   else if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
   else if (loopMatch) view = <LoopDetail loopId={loopMatch[1]} />;
   else if (hash.startsWith("#/projects")) view = <Projects />;
+  else if (hash.startsWith("#/graph")) view = <BrainGraph />;
+  else if (hash.startsWith("#/brain")) view = <Brain />;
   else if (hash.startsWith("#/meetings")) view = <Meetings />;
   else if (hash.startsWith("#/loops")) view = <Loops />;
   else if (hash.startsWith("#/settings")) view = <Settings />;
@@ -31,6 +36,7 @@ export function App() {
   return (
     <Shell>
       {view}
+      <Palette />
       <CaptureModal />
     </Shell>
   );

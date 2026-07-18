@@ -29,10 +29,12 @@ import {
 import { LoopScheduler } from "./scheduler.ts";
 import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
 import {
+  appendMistralBrainMessage,
   appendMistralMessage,
   getMistralTranscript,
   spawnMistralChat,
   spawnMistralProjectChat,
+  startMistralBrainChat,
   transcribe,
 } from "./mistral.ts";
 import {
@@ -312,6 +314,8 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
   const scope = c.req.param("scope");
   const sessionId = c.req.param("sessionId");
   if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid Vibe scope or session id" }, 400);
+  // Only loop threads are resumable; one-shot scopes (smart capture, enrich) stay read-only.
+  if (!scope.startsWith("loops_")) return c.json({ error: "only loop Vibe threads can be continued" }, 403);
   const body = (await c.req.json().catch(() => ({}))) as { message?: string };
   const message = (body.message ?? "").trim();
   if (!message) return c.json({ error: "message required" }, 400);
@@ -589,6 +593,29 @@ app.get("/api/chats/:conversationId", async (c) => {
   try {
     const transcript = await getMistralTranscript(conversationId);
     return c.json({ ...transcript, ticket: store.getByThreadId(conversationId) });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
+
+app.post("/api/brain-chat", async (c) => {
+  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  const body = (await c.req.json().catch(() => ({}))) as { text?: string; conversationId?: string };
+  const text = (body.text ?? "").trim();
+  const existingId = (body.conversationId ?? "").trim();
+  if (!text) return c.json({ error: "text required" }, 400);
+  try {
+    const conversationId = existingId || (await startMistralBrainChat(store, text));
+    if (existingId) await appendMistralBrainMessage(store, conversationId, text);
+    return c.json(await getMistralTranscript(conversationId));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
+
+app.get("/api/brain-chat/:conversationId", async (c) => {
+  try {
+    return c.json(await getMistralTranscript(c.req.param("conversationId")));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }

@@ -143,6 +143,19 @@ export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
   },
 ];
 
+export const MISTRAL_BRAIN_TOOL_NAMES = new Set([
+  "brain_search",
+  "ticket_list",
+  "ticket_next",
+  "ticket_get",
+  "project_page_read",
+]);
+
+/** Strictly read-only tool declarations for the global brain conversation. */
+export const MISTRAL_BRAIN_TOOLS: readonly FunctionTool[] = MISTRAL_BOUCLE_TOOLS.filter((tool) =>
+  MISTRAL_BRAIN_TOOL_NAMES.has(tool.function.name),
+);
+
 type ToolArgs = Record<string, unknown>;
 
 function requiredString(args: ToolArgs, key: string): string {

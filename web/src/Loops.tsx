@@ -67,7 +67,7 @@ function shellQuote(value: string): string {
 function CopyVibeCommand({ workdir, loopId, sessionId }: { workdir: string | null; loopId: string; sessionId: string }) {
   const [copied, setCopied] = useState(false);
   const command = workdir
-    ? `cd ${shellQuote(workdir)} && VIBE_HOME="$PWD/var/vibe/loops_${loopId}" vibe --resume ${sessionId}`
+    ? `cd ${shellQuote(workdir)} && VIBE_HOME="$PWD/var/vibe/"${shellQuote(`loops_${loopId}`)} vibe --resume ${shellQuote(sessionId)}`
     : null;
   const copy = () => {
     if (!command) return;

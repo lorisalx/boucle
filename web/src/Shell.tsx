@@ -1,4 +1,5 @@
 import {
+  BrainIcon,
   CalendarIcon,
   LayoutGridIcon,
   ListIcon,
@@ -17,6 +18,7 @@ const BUDGET_CAP_USD = 30;
 
 const NAV = [
   { hash: "#/", label: "Queue", icon: ListIcon },
+  { hash: "#/brain", label: "Brain", icon: BrainIcon },
   { hash: "#/projects", label: "Projects", icon: LayoutGridIcon },
   { hash: "#/meetings", label: "Meetings", icon: CalendarIcon },
   { hash: "#/loops", label: "Loops", icon: RepeatIcon },
@@ -130,7 +132,6 @@ export function Shell({ children }: { children: ReactNode }) {
           className="mb-2 flex items-center gap-2 rounded-full bg-btn px-3 py-1.5 text-[13px] font-semibold text-btn-fg transition-colors hover:bg-btn-hover"
         >
           <PlusIcon className="size-4" /> Capture
-          <kbd className="ml-auto font-mono text-[10px] font-normal opacity-70">⌘K</kbd>
         </button>
 
         <nav className="flex flex-col gap-0.5">
