@@ -119,7 +119,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
     refetch();
   }, [refetch]);
 
-  // While a codex re-run is in flight, poll so the timeline + updated fields appear live.
+  // While a Vibe re-run is in flight, poll so the timeline + updated fields appear live.
   useEffect(() => {
     if (!enriching) return;
     const id = setInterval(refetch, 5000);
@@ -254,7 +254,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
             <div className="mt-4 border-t border-border pt-4">
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-                <SparklesIcon className="size-3.5" /> Add context &amp; re-run codex
+                <SparklesIcon className="size-3.5" /> Add context &amp; re-run Vibe
               </label>
               <textarea
                 value={note}
@@ -274,18 +274,18 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                 >
                   {enriching ? (
                     <>
-                      <Loader2Icon className="size-3.5 animate-spin" /> Codex running…
+                      <Loader2Icon className="size-3.5 animate-spin" /> Vibe running…
                     </>
                   ) : (
                     <>
-                      <BotIcon className="size-3.5" /> Re-run codex
+                      <BotIcon className="size-3.5" /> Re-run Vibe
                     </>
                   )}
                 </Button>
                 <span className="text-xs text-muted">
                   {enriching
                     ? "Re-investigating the synthetic Brumeline brain… this can take a few minutes."
-                    : "Codex searches the synthetic brain and updates this ticket in place."}
+                    : "Vibe (Devstral) searches the synthetic brain and updates this ticket in place."}
                 </span>
               </div>
             </div>

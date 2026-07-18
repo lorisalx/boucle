@@ -30,11 +30,20 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 /**
- * Geist rule 2/10: no color-filled pills. Statuses read as a colored dot + neutral
- * text; priorities/buckets read as colored *text* on a neutral bordered control.
- * `tone` picks the semantic hue; everything else stays grayscale.
+ * Courant d'air: statuses read as soft tinted pills — a warm tinted fill with
+ * deep text of the same hue, never the brand accent. `tone` picks the semantic
+ * hue; everything else stays warm grayscale.
  */
 export type Tone = "neutral" | "accent" | "success" | "danger" | "warn" | "info";
+
+const TONE_PILL: Record<Tone, string> = {
+  neutral: "bg-pill-neutral-bg text-pill-neutral-fg",
+  accent: "bg-pill-accent-bg text-pill-accent-fg",
+  success: "bg-pill-success-bg text-pill-success-fg",
+  danger: "bg-pill-danger-bg text-pill-danger-fg",
+  warn: "bg-pill-warn-bg text-pill-warn-fg",
+  info: "bg-pill-info-bg text-pill-info-fg",
+};
 
 const TONE_TEXT: Record<Tone, string> = {
   neutral: "text-muted",
@@ -260,7 +269,7 @@ export const PRIORITY_RANK: Record<TicketPriority, number> = {
   low: 3,
 };
 
-/** A neutral bordered tag. Pass a `tone` for semantic colored text (never a fill). */
+/** A soft tinted status pill. `tone` picks the tint pair (fill + deep text). */
 export function Tag({
   tone = "neutral",
   className,
@@ -273,8 +282,8 @@ export function Tag({
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[11px] font-medium",
-        TONE_TEXT[tone],
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+        TONE_PILL[tone],
         className,
       )}
     >
@@ -286,17 +295,47 @@ export function Tag({
 // Back-compat alias — existing call sites use <Badge>.
 export const Badge = Tag;
 
+/** Vibe-style segmented pill control — a bordered track with a white active thumb. */
+export function Seg<T extends string>({
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  value: T;
+  options: ReadonlyArray<{ id: T; label: string }>;
+  onChange: (id: T) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cx("inline-flex rounded-full border border-border bg-side p-0.5", className)}>
+      {options.map((o) => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          className={cx(
+            "rounded-full px-3 py-1 text-xs transition-colors",
+            o.id === value ? "bg-surface font-semibold text-fg shadow-[var(--shadow)]" : "text-muted hover:text-fg",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "outline" | "ghost";
 };
 
 export function Button({ variant = "ghost", className, ...props }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
+    "inline-flex items-center justify-center gap-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
   const styles: Record<NonNullable<ButtonProps["variant"]>, string> = {
-    primary: "bg-btn px-3 py-1.5 text-btn-fg hover:bg-btn-hover",
-    outline: "border border-border px-2 py-1 text-fg hover:border-border-hover hover:bg-surface",
-    ghost: "px-2 py-1 text-muted hover:bg-surface hover:text-fg",
+    primary: "bg-btn px-3.5 py-1.5 text-btn-fg hover:bg-btn-hover",
+    outline: "border border-border bg-surface px-2.5 py-1 text-fg hover:border-border-hover",
+    ghost: "px-2.5 py-1 text-muted hover:bg-side hover:text-fg",
   };
   return <button className={cx(base, styles[variant], className)} {...props} />;
 }
@@ -308,7 +347,7 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       title={theme === "dark" ? "Switch to light" : "Switch to dark"}
-      className="inline-flex size-7 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-fg"
+      className="inline-flex size-7 items-center justify-center rounded-full text-muted hover:bg-border hover:text-fg"
     >
       {theme === "dark" ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
     </button>

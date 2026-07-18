@@ -1,9 +1,7 @@
-import { ArrowLeftIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api } from "./api.ts";
-import { navigate } from "./hooks.ts";
-import { Button, Status, ThemeToggle } from "./ui.tsx";
+import { Button, Status } from "./ui.tsx";
 
 export function Settings() {
   const [mistralConfigured, setMistralConfigured] = useState(false);
@@ -27,18 +25,7 @@ export function Settings() {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
-      <div className="mb-6 flex items-center">
-        <button
-          onClick={() => navigate("#/")}
-          className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"
-        >
-          <ArrowLeftIcon className="size-4" /> Back
-        </button>
-        <div className="ml-auto">
-          <ThemeToggle />
-        </div>
-      </div>
-      <h1 className="mb-6 text-xl font-semibold tracking-tight text-fg">Settings</h1>
+      <h1 className="mb-6 text-[22px] font-bold tracking-tight text-fg">Settings</h1>
 
       <div className="flex flex-col gap-6">
         <div className="rounded-lg border border-border bg-surface px-4 py-3">
@@ -55,9 +42,10 @@ export function Settings() {
         </div>
 
         <div className="border-t border-border pt-6">
-          <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for Codex / Claude</h2>
+          <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for Vibe</h2>
           <p className="mb-3 text-xs text-muted">
-            BOUCLE serves its ticket tools over MCP. Add this to your loop&apos;s codex{" "}
+            Boucle serves its ticket tools over MCP. Loop runs get this wired automatically; to point your
+            own Vibe session at Boucle, add this to its{" "}
             <code className="font-mono text-muted">config.toml</code> (HTTP needs the server running; stdio
             works headless).
           </p>

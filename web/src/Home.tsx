@@ -16,9 +16,7 @@ import {
   MessageSquareIcon,
   MessageSquarePlusIcon,
   PlusIcon,
-  RepeatIcon,
   RotateCcwIcon,
-  SettingsIcon,
   SunriseIcon,
   XIcon,
 } from "lucide-react";
@@ -43,7 +41,6 @@ import {
   ProjectStatusSelect,
   Switch,
   Tag,
-  ThemeToggle,
   cx,
 } from "./ui.tsx";
 
@@ -613,27 +610,27 @@ export function Home() {
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-6 sm:px-6 sm:py-8">
-      <header className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <img
-          src="/brand/Mistral-Icon-Gradient-RGB.svg"
-          alt=""
-          className="size-7 shrink-0"
-        />
-        <span className="text-base font-semibold tracking-tight text-fg">Mistral Boucle</span>
-        <span className="hidden whitespace-nowrap font-mono text-xs tabular-nums text-dim sm:inline">
-          {board.length} projects · {activeCount} active · {sleepingCount} sleeping
-        </span>
-        {smartRunning > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted">
-            <Dot tone="accent" pulse />
-            AI routing your capture…
-          </span>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
+        <div>
+          <p className="text-xs text-dim">
+            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+          </p>
+          <h1 className="text-[22px] font-bold tracking-tight text-fg">Bonjour, Nora</h1>
+          <p className="mt-0.5 text-xs tabular-nums text-muted">
+            {board.length} projects · {activeCount} active · {sleepingCount} sleeping
+            {smartRunning > 0 ? (
+              <span className="ml-2 inline-flex items-center gap-1.5">
+                <Dot tone="accent" pulse />
+                AI routing your capture…
+              </span>
+            ) : null}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             onClick={generateStatus}
             title="Generate a paste-ready “what I'm on” status"
-            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-border px-2.5 py-1 text-xs font-medium text-fg hover:border-border-hover hover:bg-surface"
+            className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-fg hover:border-border-hover"
           >
             <ClipboardListIcon className="size-3.5" /> What am I on?
           </button>
@@ -647,32 +644,19 @@ export function Home() {
             <Switch on={!hideIdeas} />
           </button>
           <AutoCaptureToggle />
-          <span className="mx-1 h-4 w-px bg-border" />
-          <button onClick={() => navigate("#/projects")} title="All projects" className="text-muted hover:text-fg">
-            <InboxIcon className="size-4" />
-          </button>
-          <button onClick={() => navigate("#/meetings")} title="Meetings" className="text-muted hover:text-fg">
-            <MicIcon className="size-4" />
-          </button>
-          <button onClick={() => navigate("#/loops")} title="Loops" className="text-muted hover:text-fg">
-            <RepeatIcon className="size-4" />
-          </button>
-          <button onClick={() => navigate("#/settings")} title="Settings" className="text-muted hover:text-fg">
-            <SettingsIcon className="size-4" />
-          </button>
-          <ThemeToggle />
         </div>
       </header>
 
       <button
         onClick={() => openCapture()}
-        className="mb-4 flex w-full items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-left hover:border-border-hover"
+        className="mb-5 flex w-full items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 text-left shadow-[var(--float)] transition-colors hover:border-border-hover"
       >
         <PlusIcon className="size-4 text-dim" />
         <span className="flex-1 text-sm text-muted">
-          Empty your head… idea, task, conv, scope — Mistral Boucle files it in the right project
+          Empty your head… idea, task, conv, scope — Boucle files it in the right project
         </span>
-        <kbd className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
+        <MicIcon className="size-4 text-dim" />
+        <kbd className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>
       </button>
 
       {activity.length > 0 ? (

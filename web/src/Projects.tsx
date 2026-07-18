@@ -8,11 +8,9 @@
  * into the brain files.
  */
 import {
-  ArrowLeftIcon,
   ArrowUpRightIcon,
   CheckIcon,
   FileTextIcon,
-  FolderKanbanIcon,
   Link2Icon,
   MessageSquareIcon,
   MessageSquarePlusIcon,
@@ -48,7 +46,6 @@ import {
   SourceIcon,
   Status,
   Tag,
-  ThemeToggle,
   cx,
   formatWhen,
 } from "./ui.tsx";
@@ -533,33 +530,21 @@ export function Projects() {
   return (
     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-5 flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => navigate("#/")}
-          className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"
-        >
-          <ArrowLeftIcon className="size-4" /> Back
-        </button>
-        <div className="flex items-center gap-2">
-          <FolderKanbanIcon className="size-4 text-dim" />
-          <h1 className="text-base font-semibold tracking-tight text-fg">Projects</h1>
-        </div>
+        <h1 className="text-[22px] font-bold tracking-tight text-fg">Projects</h1>
         <span className="font-mono text-xs tabular-nums text-dim">{counts.active} ongoing</span>
-        <div className="ml-auto">
-          <ThemeToggle />
-        </div>
       </header>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="inline-flex flex-wrap rounded-full border border-border bg-side p-0.5">
           {FILTERS.map((item) => (
             <button
               key={item.id}
               onClick={() => setFilter(item.id)}
               className={cx(
-                "rounded-md border px-2.5 py-1 text-xs font-medium",
+                "rounded-full px-3 py-1 text-xs transition-colors",
                 filter === item.id
-                  ? "border-accent text-accent-text"
-                  : "border-border text-muted hover:border-border-hover hover:text-fg",
+                  ? "bg-surface font-semibold text-fg shadow-[var(--shadow)]"
+                  : "text-muted hover:text-fg",
               )}
             >
               {item.label} <span className="ml-1 tabular-nums text-dim">{counts[item.id]}</span>

@@ -83,13 +83,7 @@ export function Loops() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-6 flex items-center gap-3">
-        <button
-          onClick={() => navigate("#/")}
-          className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"
-        >
-          <ArrowLeftIcon className="size-4" /> Back
-        </button>
-        <span className="text-base font-semibold tracking-tight text-fg">Loops</span>
+        <h1 className="text-[22px] font-bold tracking-tight text-fg">Loops</h1>
         <div className="ml-auto flex items-center gap-3">
           <button
             onClick={toggleMaster}
@@ -102,7 +96,6 @@ export function Loops() {
           <Button variant="outline" onClick={() => navigate("#/loops/new")}>
             <PlusIcon className="size-3.5" /> New loop
           </Button>
-          <ThemeToggle />
         </div>
       </header>
 

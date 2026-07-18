@@ -49,18 +49,13 @@ export function getMcpToken(store: BoucleStore): string {
   return token;
 }
 
-/** A copy-pasteable codex/claude `config.toml` block for both transports. */
+/** A copy-pasteable Vibe `config.toml` block for both transports (matches vibe.ts's generated shape). */
 export function mcpConfigToml(opts: { url: string; token: string; cliPath: string; dbPath: string }): string {
-  return `# HTTP transport — the boucle server must be running:
-[mcp_servers.boucle]
-url = "${opts.url}"
-bearer_token = "${opts.token}"
+  return `# HTTP transport — the boucle server must be running, BOUCLE_MCP_TOKEN set in your env:
+mcp_servers = [{ name = "boucle", transport = "streamable-http", url = "${opts.url}", auth = { type = "static", api_key_env = "BOUCLE_MCP_TOKEN", api_key_header = "Authorization", api_key_format = "Bearer {token}" } }]
 
 # --- or stdio transport (no running server / token needed) ---
-# [mcp_servers.boucle]
-# command = "node"
-# args = ["${opts.cliPath}", "mcp"]
-# env = { BOUCLE_DB = "${opts.dbPath}" }
+# mcp_servers = [{ name = "boucle", transport = "stdio", command = "node", args = ["${opts.cliPath}", "mcp"], env = { BOUCLE_DB = "${opts.dbPath}" } }]
 `;
 }
 

@@ -5,7 +5,6 @@
  * full note. Raw (not-yet-processed) drops are flagged so you know the loop is pending.
  */
 import {
-  ArrowLeftIcon,
   ArrowUpRightIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -15,8 +14,8 @@ import {
 import { useState } from "react";
 
 import type { Meeting } from "./api.ts";
-import { navigate, useMeetings } from "./hooks.ts";
-import { Status, Tag, ThemeToggle } from "./ui.tsx";
+import { useMeetings } from "./hooks.ts";
+import { Status, Tag } from "./ui.tsx";
 
 /** "Sat, Jul 5 · 10:15" from an ISO datetime, or the plain date if that's all we have. */
 function formatMeetingDate(date: string | null): string {
@@ -139,20 +138,13 @@ export function Meetings() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
       <header className="mb-6 flex items-center gap-3">
-        <button
-          onClick={() => navigate("#/")}
-          className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"
-        >
-          <ArrowLeftIcon className="size-4" /> Back
-        </button>
-        <span className="text-base font-semibold tracking-tight text-fg">Meetings</span>
+        <h1 className="text-[22px] font-bold tracking-tight text-fg">Meetings</h1>
         <div className="ml-auto flex items-center gap-3">
           {unprocessed > 0 ? (
             <span className="text-xs text-amber-600 dark:text-amber-400">
               {unprocessed} awaiting the loop
             </span>
           ) : null}
-          <ThemeToggle />
         </div>
       </header>
 

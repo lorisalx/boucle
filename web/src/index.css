@@ -1,14 +1,18 @@
 @import "tailwindcss";
 
 /*
- * Geist — the Brumeline demo design system (design.md).
- * Grayscale carries the structure; color is semantic and tiny; borders over
- * shadows. Mistral Boucle uses the official Mistral 2026 ramp for its accent.
+ * Courant d'air — the Mistral Boucle design system.
+ * The Vibe look: warm paper ground, white cards one step brighter, sidebar one
+ * step deeper. Grayscale is warm (stone, not slate); status reads as soft
+ * tinted pills; the accent (#FA500F) appears in at most three places per
+ * screen — logo, active nav, primary action. The brand ramp shows up exactly
+ * once, as the budget meter fill.
  */
 
 @theme {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-side: var(--side);
   --color-border: var(--c-border);
   --color-border-hover: var(--c-border-hover);
   --color-fg: var(--fg);
@@ -24,6 +28,26 @@
   --color-btn-fg: var(--btn-primary-fg);
   --color-btn-hover: var(--btn-primary-hover);
 
+  /* Soft status pills — tinted fill + deep text, never the accent. */
+  --color-pill-accent-bg: var(--pill-accent-bg);
+  --color-pill-accent-fg: var(--pill-accent-fg);
+  --color-pill-success-bg: var(--pill-success-bg);
+  --color-pill-success-fg: var(--pill-success-fg);
+  --color-pill-danger-bg: var(--pill-danger-bg);
+  --color-pill-danger-fg: var(--pill-danger-fg);
+  --color-pill-warn-bg: var(--pill-warn-bg);
+  --color-pill-warn-fg: var(--pill-warn-fg);
+  --color-pill-info-bg: var(--pill-info-bg);
+  --color-pill-info-fg: var(--pill-info-fg);
+  --color-pill-neutral-bg: var(--pill-neutral-bg);
+  --color-pill-neutral-fg: var(--pill-neutral-fg);
+
+  /* Vibe radii: cards 14, controls 10, inputs 18. */
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
+
   --font-sans: var(--sans);
   --font-mono: var(--mono);
 }
@@ -31,56 +55,87 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --bg: #ffffff;
-  --surface: #fafafa;
-  --c-border: #eaeaea;
-  --c-border-hover: #d4d4d4;
-  --fg: #171717;
-  --muted: #666666;
-  --dim: #999999;
-  --success: #00a05a;
-  --danger: #e5484d;
+  --bg: #fbfaf8;
+  --surface: #ffffff;
+  --side: #f4f3f0;
+  --c-border: #e9e7e1;
+  --c-border-hover: #d6d2c8;
+  --fg: #1b1b19;
+  --muted: #8b887f;
+  --dim: #aba79c;
+  --success: #4d7c0f;
+  --danger: #dc2626;
   --brand-yellow: #ffaf01;
   --brand-amber: #ff8204;
   --brand-orange: #fa500f;
   --brand-red: #e61300;
   --brand-deep-red: #c4001d;
+  --ramp: linear-gradient(
+    90deg,
+    var(--brand-yellow),
+    var(--brand-amber),
+    var(--brand-orange),
+    var(--brand-red),
+    var(--brand-deep-red)
+  );
   --accent: var(--brand-orange);
-  --accent-text: var(--brand-deep-red);
+  --accent-text: var(--brand-orange);
   --link: var(--brand-deep-red);
   --focus: var(--brand-orange);
   --btn-primary-bg: var(--brand-orange);
   --btn-primary-fg: #ffffff;
   --btn-primary-hover: var(--brand-red);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pill-accent-bg: #fdeadf;
+  --pill-accent-fg: #c2410c;
+  --pill-success-bg: #e8f0e4;
+  --pill-success-fg: #3f6212;
+  --pill-danger-bg: #fbe3e3;
+  --pill-danger-fg: #b91c1c;
+  --pill-warn-bg: #fbeed3;
+  --pill-warn-fg: #92610c;
+  --pill-info-bg: #edebe4;
+  --pill-info-fg: #57534e;
+  --pill-neutral-bg: #f1efe9;
+  --pill-neutral-fg: #78746a;
+  --shadow: 0 1px 2px rgba(27, 27, 25, 0.04);
+  --float: 0 2px 10px rgba(27, 27, 25, 0.05), 0 1px 2px rgba(27, 27, 25, 0.04);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #000000;
-  --surface: #0a0a0a;
-  --c-border: #262626;
-  --c-border-hover: #333333;
-  --fg: #ededed;
-  --muted: #888888;
-  --dim: #666666;
-  --link: #ff8204;
-  --focus: #fa500f;
-  --success: #00ca6f;
-  --danger: #ff6369;
-  --brand-yellow: #ffaf01;
-  --brand-amber: #ff8204;
-  --brand-orange: #fa500f;
-  --brand-red: #e61300;
-  --brand-deep-red: #c4001d;
+  --bg: #151412;
+  --surface: #201f1b;
+  --side: #1b1a17;
+  --c-border: #2e2c27;
+  --c-border-hover: #3a382f;
+  --fg: #f1eee7;
+  --muted: #8f8c83;
+  --dim: #6e6b62;
+  --success: #a3c585;
+  --danger: #f2a1a1;
   --accent: var(--brand-orange);
   --accent-text: var(--brand-amber);
+  --link: var(--brand-amber);
+  --focus: var(--brand-amber);
   --btn-primary-bg: var(--brand-orange);
   --btn-primary-fg: #ffffff;
   --btn-primary-hover: var(--brand-red);
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --pill-accent-bg: #3a2417;
+  --pill-accent-fg: #ffab70;
+  --pill-success-bg: #22301c;
+  --pill-success-fg: #a3c585;
+  --pill-danger-bg: #3a1c1c;
+  --pill-danger-fg: #f2a1a1;
+  --pill-warn-bg: #34290f;
+  --pill-warn-fg: #e4b95b;
+  --pill-info-bg: #2a2823;
+  --pill-info-fg: #b9b5aa;
+  --pill-neutral-bg: #26241f;
+  --pill-neutral-fg: #8f8c83;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --float: 0 2px 10px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 html,
@@ -94,20 +149,19 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--sans);
-  font-feature-settings: "cv01", "ss03";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Visible keyboard focus everywhere (Geist rule 8). */
+/* Visible keyboard focus everywhere. */
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -255,7 +255,7 @@ export function CaptureModal() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="w-full max-w-xl rounded-lg border border-border bg-bg p-4 shadow-lg">
+      <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-4 shadow-[var(--float)]">
         <div className="flex items-start gap-3">
           <textarea
             ref={inputRef}

@@ -76,11 +76,11 @@ export function Chat({ conversationId }: { conversationId: string }) {
             <div key={index} className={cx("flex", user ? "justify-end" : "justify-start")}>
               <div
                 className={cx(
-                  "max-w-[85%] whitespace-pre-wrap rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
-                  user ? "bg-btn text-btn-fg" : "border border-border bg-surface text-fg",
+                  "whitespace-pre-wrap text-sm leading-relaxed text-fg",
+                  user ? "max-w-[85%] rounded-2xl bg-side px-3.5 py-2.5" : "max-w-[92%] py-1",
                 )}
               >
-                {!user ? <BotIcon className="mb-1.5 size-3.5 text-accent-text" /> : null}
+                {!user ? <BotIcon className="mb-1.5 size-3.5 text-accent" /> : null}
                 {entry.text}
               </div>
             </div>
@@ -91,7 +91,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
 
       <footer className="sticky bottom-0 border-t border-border bg-bg py-4">
         {error ? <p className="mb-2 text-xs text-danger">{error}</p> : null}
-        <div className="flex items-end gap-2 rounded-lg border border-border bg-surface p-2 focus-within:border-focus">
+        <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-[var(--float)] focus-within:border-focus">
           <textarea
             value={text}
             onChange={(event) => setText(event.target.value)}

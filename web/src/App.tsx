@@ -5,6 +5,7 @@ import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
 import { Projects } from "./Projects.tsx";
 import { Settings } from "./Settings.tsx";
+import { Shell } from "./Shell.tsx";
 import { TicketDetail } from "./TicketDetail.tsx";
 import { useHashRoute } from "./hooks.ts";
 
@@ -24,9 +25,9 @@ export function App() {
   else if (hash.startsWith("#/settings")) view = <Settings />;
 
   return (
-    <div className="min-h-full">
+    <Shell>
       {view}
       <CaptureModal />
-    </div>
+    </Shell>
   );
 }

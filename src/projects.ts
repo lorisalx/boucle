@@ -10,7 +10,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 
 import { resolveBrainDir } from "./config.ts";
 import type { ProjectMeta, Ticket } from "./store.ts";
@@ -255,8 +255,11 @@ export function listProjects(
     .filter((file) => file.endsWith(".md") && file !== "README.md")
     .map((file) => {
       const projectId = basename(file, ".md");
-      const brainPath = join(BRAIN_PROJECTS_DIR, file);
-      const markdown = readFileSync(brainPath, "utf8");
+      const absPath = join(BRAIN_PROJECTS_DIR, file);
+      // Expose the path relative to the brain root's parent ("fake-brain/projects/x.md"):
+      // absolute paths would leak the machine's home directory into API responses.
+      const brainPath = relative(dirname(BRAIN_DIR), absPath);
+      const markdown = readFileSync(absPath, "utf8");
       const frontmatter = parseFrontmatter(markdown);
       const rawStatus = frontmatter.status ?? "backlog";
       const state = extractSection(markdown, "State");
@@ -266,7 +269,7 @@ export function listProjects(
       const lastTimelineAt = timeline.find((e) => e.date !== null)?.date ?? null;
       let fileUpdatedAt: string | null = null;
       try {
-        fileUpdatedAt = statSync(brainPath).mtime.toISOString();
+        fileUpdatedAt = statSync(absPath).mtime.toISOString();
       } catch {
         /* stat raced a rename — leave null */
       }
