@@ -55,17 +55,13 @@ export function resolveMeetingsDir(): string {
   return join(resolveBrainDir(), "meetings");
 }
 
-/**
- * Startup instructions appended to every chat Boucle spawns in t3code. Scoped to
- * spawned chats only (not a global rule): gather gbrain context first, then pause
- * before any outbound Slack message or any push to Dataiku DSS.
- */
+/** Startup instructions appended to every chat Boucle spawns in t3code. */
 export const SPAWNED_CHAT_GUARDRAILS = `Before anything else, on this first turn:
-- Context: gather gbrain context before acting. Run \`gbrain search\` for this ticket's topic, project, and requester (then \`gbrain get <slug>\` on the relevant hits) so you work from current project knowledge instead of assumptions. The brain files are current; your memory of them is not.
+- Context: read the relevant files in fake-brain/ for this ticket's topic, project, requester, and recent meetings so you work from current Brumeline knowledge instead of assumptions.
 
 Then, two hard rules for the rest of this conversation:
-- Slack: do NOT send any Slack message (channel post, thread reply, DM, scheduled message, draft→send) without Loris's explicit approval first. Reading, searching, and drafting are fine — show the target channel/person and the exact text, then wait for his go-ahead.
-- Dataiku: do NOT push anything to any Dataiku DSS instance (Design or Prod) without Loris's explicit approval first. This includes redeploying/restarting webapps, pushing plugins, committing project changes, creating/editing agents or agent tools, running data-writing scenarios, and SQL DML/DDL/COMMIT. Reading, inspecting, and dry-runs are fine — say exactly what will change on which instance, then wait for his go-ahead. Exception: writing to Loris's scratch sandbox (COMMUNITY.LORIS_SANDBOX on EDP_SNOWFLAKE) is fine without approval.`;
+- Outbound communication: do NOT send a channel post, thread reply, email, direct message, invitation, or scheduled message without Nora Bellier's explicit approval. Reading and drafting are fine; show the destination and exact text, then wait.
+- Production changes: do NOT deploy, restart, publish, migrate, alter production data, or run a data-writing job in Brumeline's production environment without Nora Bellier's explicit approval. Inspection and dry-runs are fine; state exactly what will change and where, then wait.`;
 
 export interface T3CodeConfig {
   readonly baseUrl: string;

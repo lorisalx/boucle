@@ -313,104 +313,292 @@ function toLoop(row: RawLoop): Loop {
 }
 
 /** Default chief-of-staff heartbeat loop, seeded on first boot. */
-export const DEFAULT_CHIEF_PROMPT = `Act as a lightweight chief of staff for Loris. Explore everything for context — Slack, Google
-Calendar, Google Drive/Docs, ClickUp, and the local gbrain in
-/Users/loris.alexandre@dataiku.com/Documents/dataiku — to keep the gbrain current. Prioritize durable
-gbrain maintenance, pending asks, blockers, decisions, launch changes, access issues, and review
-requests. Pull Loris's recent Slack activity broadly — not just named people: his Activity feed
-(@-mentions, thread replies, reactions), threads he's recently participated in, his DMs, and the channels
-he's active in (e.g. project channels like #eda-bizapps-project-salesforce-mcp). Do NOT treat Slack triage as
-only a search problem: read recent DM history directly, read recent thread history directly, and inspect the
-recent history of the channels where he has been active. Search is only a helper for discovery and backfill.
-Do not rely only on @-mentions, from:<user> to:me searches, or narrow keyword searches, because directed asks and
-durable project signals often appear in ordinary DMs without an explicit mention. On top of that, explicitly
-open and read recent DM history with Judah Adler, Daniel Ionita, Jonathan Parker-Randall, and Lauryn Fluellen,
-plus Loris's Slack DM-to-self thread, even if search returns nothing. Also review the recent conversations
-where Loris himself posted, because his own replies often reveal the ask that triggered them. An ask directed
-at Loris counts no matter who sent it and whether or not his name is mentioned explicitly. Update relevant gbrain
-notes for durable project-relevant signals from ANY source and reindex the brain. Stay quiet if nothing
-meaningful changed. If the heartbeat fires outside Monday-Friday 08:00-18:00 Europe/Paris, do not do
-connector triage; return DONT_NOTIFY unless there is already-visible urgent context in the thread.
+export const DEFAULT_CHIEF_PROMPT = `Act as a lightweight chief of staff for Nora Bellier, Brumeline's Head of Product. Use only the
+synthetic material in fake-brain/ plus Boucle's MCP tools. Keep project knowledge current and prioritize
+pending asks, blockers, decisions, launch changes, access issues, and review requests. Review recent local
+activity broadly: project notes, meeting notes, ticket history, Nora's own replies, and ordinary team updates.
+Do not treat triage as only a keyword-search problem; read the relevant context directly. Pay particular
+attention to work involving Camille Dervaux, Émile Rousset, Inès Marceau, Théo Valmont, Maëlle Courtois,
+and Bastien Leroux. An ask directed at Nora counts whether or not her name is stated explicitly. Record
+durable signals on the relevant fake-brain project pages. Stay quiet if nothing meaningful changed. Outside
+Monday-Friday 08:00-18:00 Europe/Paris, return DONT_NOTIFY unless the current thread already contains an
+urgent issue.
 
-Who Loris is — Loris Alexandre is a Generative AI Engineer on Dataiku's EDA (Enterprise Data & Analytics)
-GenAI Engineering team, working closely with Jonathan Parker-Randall (team lead, owns direction & data
-engineering). Loris owns/builds: the GenAI Monitoring app (primary owner); the Companion Agent — the
-flagship internal Sales/CX/Services agent — and its config app; Legal Document Process Automation; and
-Salesforce-MCP / Salesforce-from-Slack work. He's on the Hackaiku Spring 2026 team. Frequent collaborators:
-Jonathan Parker-Randall, Daniel Ionita, Judah Adler, Lauryn Fluellen, Dave Cattermole, Arnaud Pichery.
-Other people's action items are NOT Loris's tickets, even when raised in a thread he's in.
+Nora owns product delivery across Brumeline's customer-operations platform: Signal Renouvellement, Portail
+Partenaire, Copilote Onboarding, Migration Hélium, Socle Permissions, and Observatoire Usage. Other people's
+action items are not Nora's tickets, even when they appear in a meeting she attended.
 
-Work the queue via the MCP tools (never message anyone):
-- Self-clean first. Review currently-open tickets (ticket_list / ticket_next) and re-check each one's Slack
-  thread AND any matching ClickUp task/PR. ticket_transition to done (or dropped) when: the ask is already
-  handled (Loris or someone replied, it got answered, the blocker cleared, a ClickUp task/PR shipped it, or
-  it's obsolete) — OR the task isn't actually Loris's to act on (it belongs to someone else, e.g. Judah's or
-  Daniel's work; drop it with reason "not Loris's task — owned by <person>"). Always pass a one-line
-  \`reason\` (why), and set \`workRef\` to whatever resolved it (a ClickUp/PR URL) when you can find it. Read
-  before closing; when unsure, leave it open. The queue should clean itself so Loris never has to manually
-  close or disown work.
-- Create tickets from Slack only, and ONLY for action items LORIS HIMSELF must do. If the task is someone
-  else's responsibility (Judah's, Daniel's, Dave's, …) — even when raised in a thread Loris is in, or when
-  he's merely cc'd/informed — do NOT create a ticket; let it inform the gbrain instead. Skip FYIs and
-  announcements. ticket_upsert each genuine Loris ask/action — idempotent on dedupeKey
-  ("slack:<channel>:<ts>"). Calendar/Drive/ClickUp/Gmail signals feed the gbrain but do NOT become tickets.
-  Short imperative title; priority (VIPs and deadlines skew higher); gbrain project slug when obvious; needs
-  (claude/codex for agent work, human for Loris-only, none for trivial); a permalink; the requester slug;
-  one concrete next-action.
-- Use source_seen to skip already-classified signals; mark_source_seen to record decisions.
-- You own the decision to start agent conversations. For any actionable ticket with needs=codex or
-  needs=claude that has no t3code thread yet (threadId is empty or not a UUID), call spawn_chat once to kick
-  off the conversation in t3code. spawn_chat sets the thread link itself — never write threadId by hand.
-- Call reprioritize once at the end. Keep it to ~12 tickets per run; prefer precision over recall.`;
+Work the queue via the MCP tools (never send an outbound message):
+- Self-clean first. Review open tickets with ticket_list / ticket_next and re-check the matching project,
+  meeting, and ticket history. Use ticket_transition to mark work done or dropped when it was handled, became
+  obsolete, or belongs to another teammate. Always pass a one-line \`reason\`, and set \`workRef\` when a
+  local project artifact records the resolution. Read before closing; when unsure, leave it open.
+- Create tickets only for action items Nora herself must do. Skip other teammates' commitments, FYIs, and
+  announcements. Use ticket_upsert with an idempotent synthetic dedupeKey. Give each ticket a short imperative
+  title, appropriate priority, matching fake-brain project slug, needs, requester slug, and one concrete next
+  action. Meeting and project signals may update the fake brain without becoming tickets.
+- Use source_seen to skip already-classified signals and mark_source_seen to record decisions.
+- For actionable tickets with needs=codex or needs=claude and no linked thread, call spawn_chat once. Let
+  spawn_chat set the thread link; never write threadId by hand.
+- Call reprioritize once at the end. Keep it to about 12 tickets per run; prefer precision over recall.`;
 
-export const DEFAULT_MEETINGS_PROMPT = `Process freshly-recorded meeting transcripts for Loris. The Boucle Mac recorder drops raw
-transcripts as markdown files in /Users/loris.alexandre@dataiku.com/Documents/dataiku/brain/meetings/,
-each with YAML front-matter containing \`processed: false\`. Your job: turn each unprocessed transcript
-into a clean gbrain note in the house style, and create Boucle tickets for Loris's own action items.
+export const DEFAULT_MEETINGS_PROMPT = `Process freshly recorded synthetic meeting transcripts for Nora Bellier. The recorder drops raw markdown
+files in fake-brain/meetings/ with YAML frontmatter containing \`processed: false\`. Turn each unprocessed
+transcript into a clean meeting note and create Boucle tickets for Nora's own action items.
 
 Do exactly this each run:
-1. List brain/meetings/*.md and open only files whose front-matter has \`processed: false\`. If there
-   are none, stay quiet and stop — do not touch already-processed notes (they have no \`processed\` key
-   or \`processed: true\`).
-2. For each unprocessed transcript, read the whole thing. Remote meetings are captured as two tracks:
-   \`**Moi:**\` is Loris speaking and \`**Eux:**\` is everyone else — use that to tell who committed to what.
-   In-person meetings are single-track (mic only) and have NO speaker labels, just timecodes; don't invent
-   attribution — infer it from context and the \`attendees_raw\` front-matter instead.
-3. Rewrite the file IN PLACE to match the existing meeting-note house style in that folder: keep the YAML
-   front-matter but resolve \`attendees\` as gbrain people slugs — map each entry of \`attendees_raw\`
-   (calendar names/emails, when present) to a \`people/<slug>\`, cross-checking Google Calendar around the
-   \`date\` if an entry is ambiguous; keep \`title\` and \`call_link\` if present. Add \`tags\`, and flip
-   \`processed: true\`. Then a \`# Title\`, a one-paragraph \`>\` summary, a \`## Key points\` list, a
-   \`## Decisions\` list, an \`## Action items\` list (mark each with the owner), and a \`## Connections\`
-   list of \`[[people/…]]\` / \`[[projects/…]]\` wikilinks. Preserve the raw transcript at the bottom under
-   a collapsed \`## Transcript\` section so nothing is lost.
-4. Create a Boucle ticket ONLY for action items Loris himself must do (skip other people's commitments and
-   FYIs). ticket_upsert each — idempotent on dedupeKey "meeting:<filename>:<n>". Short imperative title;
-   priority from urgency/deadline; gbrain project slug when obvious; needs (claude/codex for agent work,
-   human for Loris-only); a one concrete next-action; source "manual". Do not invent tasks that weren't
-   actually agreed in the meeting.
-5. Update relevant gbrain people/project notes with durable signal from the meeting, then reindex.
-6. Call reprioritize once at the end. Summarize in this thread which meetings you processed and how many
-   tickets you created. If nothing was unprocessed, return DONT_NOTIFY.`;
+1. List fake-brain/meetings/*.md and open only files whose frontmatter has \`processed: false\`. If none exist,
+   return DONT_NOTIFY without touching curated notes.
+2. Read each selected transcript in full. Remote recordings use \`**Moi:**\` for Nora and \`**Eux:**\` for
+   everyone else. Single-track recordings may have no speaker labels; use attendees_raw and context without
+   inventing attribution.
+3. Rewrite the file in place in the existing house style. Preserve the YAML frontmatter, resolve attendees to
+   fictional \`people/<slug>\` values, keep title and call_link, add tags and related_projects, and set
+   \`processed: true\`. Add a title, summary blockquote, Key points, Decisions, Action items with owners, and
+   Connections with people/project wikilinks. Preserve the raw transcript under a collapsed Transcript section.
+4. Create a ticket only for action items Nora committed to. Use ticket_upsert with dedupeKey
+   "meeting:<filename>:<n>", a short imperative title, priority from urgency, the matching project slug,
+   suitable needs, requester, and one concrete next action. Use source "manual". Do not invent tasks.
+5. Update the relevant fake-brain project pages with durable meeting signals, then trigger the local reindex shim.
+6. Call reprioritize once. Summarize which meetings were processed and how many tickets were created, or return
+   DONT_NOTIFY when there was nothing to process.`;
 
-export const DEFAULT_TIMELINE_SCRIBE_PROMPT = `Keep the gbrain project pages' timelines current from Boucle ticket activity, so the
-Projects page (and every gbrain consumer) reflects what actually shipped.
+export const DEFAULT_TIMELINE_SCRIBE_PROMPT = `Keep fake-brain project timelines current from Boucle ticket activity so the Projects page reflects what
+the Brumeline team actually shipped.
 
 Do exactly this each run:
-1. Call ticket_list with status "done", then status "dropped". Keep only tickets updated in the
-   last 24 hours that have a project slug. If none qualify, do nothing and return DONT_NOTIFY.
-2. For each affected project, open
-   /Users/loris.alexandre@dataiku.com/Documents/dataiku/brain/projects/<slug>.md and read its
-   "## Timeline" section. For each MEANINGFUL completion (something shipped, decided, fixed, or
-   unblocked — skip dropped noise, snooze churn, and trivia), append one entry in the house
-   format: \`- **YYYY-MM-DD** | <past-tense one-liner>\` (use the ticket's workRef link when it
-   has one). Batch several same-day completions of one project into a single entry when natural.
-3. Idempotence is critical: before writing, check the timeline (and the rest of the page) —
-   if the event is already recorded, skip it. Append only; never rewrite or delete existing
-   lines; keep the section's oldest-first order; create the "## Timeline" section only if missing.
-4. After any edit, reindex:
-   \`gbrain import /Users/loris.alexandre@dataiku.com/Documents/dataiku/brain && gbrain embed --stale\`.
-5. Summarize in this thread which pages you touched (or DONT_NOTIFY if none).`;
+1. Call ticket_list with status "done", then status "dropped". Keep only tickets updated in the last 24 hours
+   that have a project slug. If none qualify, return DONT_NOTIFY.
+2. Open fake-brain/projects/<slug>.md for each affected project and read its "## Timeline" section. For each
+   meaningful completion — something shipped, decided, fixed, or unblocked — append one entry in the format
+   \`- **YYYY-MM-DD** | <past-tense one-liner>\`. Skip dropped noise, snooze churn, and trivia. Include workRef
+   when useful and combine related same-day completions naturally.
+3. Before writing, check the full page for the event. Append only, never rewrite or delete existing entries,
+   keep oldest-first order, and create "## Timeline" only when missing.
+4. After any edit, run scripts/gbrain-noop import fake-brain. It is intentionally a local no-op for this demo.
+5. Summarize which pages changed, or return DONT_NOTIFY if none did.`;
+
+interface SeedTicket extends UpsertTicketInput {
+  status: TicketStatus;
+  snoozeDays?: number;
+  workRef?: string;
+}
+
+const DEFAULT_TICKETS: SeedTicket[] = [
+  {
+    dedupeKey: "seed:signal-renouvellement:seuils",
+    title: "Valider les seuils d'alerte de renouvellement",
+    body: "Maëlle attend la grille finale avant de lancer le pilote sur les comptes à risque.",
+    status: "next",
+    priority: "urgent",
+    bucket: "urgent",
+    project: "signal-renouvellement",
+    source: "manual",
+    requester: "people/maelle-courtois",
+    needs: "human",
+    effort: "s",
+    nextAction: "Relire les trois seuils proposés et noter la décision dans la page projet.",
+  },
+  {
+    dedupeKey: "seed:signal-renouvellement:copie-email",
+    title: "Réviser la copie de l'email d'alerte",
+    body: "Le ton doit rester factuel et proposer une prochaine action au responsable de compte.",
+    status: "triaged",
+    priority: "normal",
+    bucket: "cool_to_do",
+    project: "signal-renouvellement",
+    source: "gmail",
+    requester: "people/ines-marceau",
+    needs: "human",
+    effort: "xs",
+    nextAction: "Commenter la version française préparée par Inès.",
+  },
+  {
+    dedupeKey: "seed:portail-partenaire:scope-beta",
+    title: "Figer le périmètre de la bêta partenaires",
+    body: "La bêta doit couvrir le partage de dossiers sans embarquer la facturation déléguée.",
+    status: "in_progress",
+    priority: "high",
+    bucket: "to_do_next",
+    project: "portail-partenaire",
+    source: "gcal",
+    requester: "people/theo-valmont",
+    needs: "human",
+    effort: "m",
+    nextAction: "Rédiger les critères d'entrée et de sortie de la bêta.",
+  },
+  {
+    dedupeKey: "seed:portail-partenaire:maquette",
+    title: "Annoter la maquette du partage de dossier",
+    body: "Deux états vides et le cas d'un lien expiré restent à trancher.",
+    status: "inbox",
+    priority: "normal",
+    bucket: "cool_to_do",
+    project: "portail-partenaire",
+    source: "manual",
+    requester: "people/ines-marceau",
+    needs: "human",
+    effort: "s",
+    nextAction: "Ajouter les commentaires produit sur les trois écrans concernés.",
+  },
+  {
+    dedupeKey: "seed:copilote-onboarding:prompts",
+    title: "Tester les suggestions du copilote sur cinq parcours",
+    body: "Le jeu de test couvre un démarrage simple, deux imports et deux comptes multi-équipes.",
+    status: "next",
+    priority: "high",
+    bucket: "to_do_next",
+    project: "copilote-onboarding",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "claude",
+    effort: "m",
+    nextAction: "Exécuter le protocole et classer les suggestions inutiles ou ambiguës.",
+  },
+  {
+    dedupeKey: "seed:copilote-onboarding:consentement",
+    title: "Décider le texte de consentement du copilote",
+    body: "La formulation doit expliquer quelles données de configuration sont analysées.",
+    status: "blocked",
+    priority: "high",
+    bucket: "to_do_next",
+    project: "copilote-onboarding",
+    source: "gmail",
+    requester: "people/camille-dervaux",
+    needs: "human",
+    effort: "s",
+    nextAction: "Attendre la revue du conseil externe puis choisir la variante finale.",
+  },
+  {
+    dedupeKey: "seed:migration-helium:vague-deux",
+    title: "Préparer la liste de la deuxième vague Hélium",
+    body: "Douze espaces clients sont éligibles après la première vague sans incident majeur.",
+    status: "triaged",
+    priority: "high",
+    bucket: "to_do_next",
+    project: "migration-helium",
+    source: "manual",
+    requester: "people/bastien-leroux",
+    needs: "human",
+    effort: "s",
+    nextAction: "Valider les exclusions avec Maëlle avant de publier la liste.",
+  },
+  {
+    dedupeKey: "seed:migration-helium:rollback",
+    title: "Documenter le signal de retour arrière Hélium",
+    body: "Le runbook technique existe; il manque le critère produit qui déclenche le rollback.",
+    status: "done",
+    priority: "normal",
+    bucket: "cool_to_do",
+    project: "migration-helium",
+    source: "manual",
+    requester: "people/emile-rousset",
+    needs: "human",
+    effort: "xs",
+    nextAction: "Ajouter le seuil d'échec au runbook.",
+    workRef: "https://brumeline.example/runbooks/helium-rollback",
+  },
+  {
+    dedupeKey: "seed:socle-permissions:matrice",
+    title: "Arbitrer les droits du rôle Responsable",
+    body: "L'export de données et l'invitation d'utilisateurs restent les deux permissions contestées.",
+    status: "in_progress",
+    priority: "urgent",
+    bucket: "urgent",
+    project: "socle-permissions",
+    source: "gcal",
+    requester: "people/camille-dervaux",
+    needs: "human",
+    effort: "m",
+    nextAction: "Choisir la matrice minimale avant la revue de sécurité.",
+  },
+  {
+    dedupeKey: "seed:socle-permissions:audit",
+    title: "Ajouter l'événement de révocation au journal d'audit",
+    body: "Le prototype journalise les attributions mais pas encore les révocations.",
+    status: "blocked",
+    priority: "normal",
+    bucket: "cool_to_do",
+    project: "socle-permissions",
+    source: "manual",
+    requester: "people/bastien-leroux",
+    needs: "codex",
+    effort: "m",
+    nextAction: "Reprendre quand le schéma d'événement versionné sera fusionné.",
+  },
+  {
+    dedupeKey: "seed:observatoire-usage:cohortes",
+    title: "Nommer les cohortes du tableau d'usage",
+    body: "Les segments actuels sont compréhensibles techniquement mais opaques pour l'équipe commerciale.",
+    status: "snoozed",
+    snoozeDays: 5,
+    priority: "low",
+    bucket: "maybe_one_day",
+    project: "observatoire-usage",
+    source: "manual",
+    requester: "people/theo-valmont",
+    needs: "human",
+    effort: "xs",
+    nextAction: "Proposer quatre libellés après la prochaine collecte hebdomadaire.",
+  },
+  {
+    dedupeKey: "seed:observatoire-usage:export",
+    title: "Cadrer l'export mensuel des métriques",
+    body: "Le besoin commercial est réel, mais le format et les destinataires ne sont pas encore établis.",
+    status: "inbox",
+    priority: "low",
+    bucket: "maybe_one_day",
+    project: "observatoire-usage",
+    source: "slack",
+    requester: "people/theo-valmont",
+    needs: "human",
+    effort: "m",
+    nextAction: "Demander un exemple de rapport attendu à Théo.",
+  },
+  {
+    dedupeKey: "seed:signal-renouvellement:historique",
+    title: "Comparer le signal avec les renouvellements du trimestre",
+    body: "Une lecture rétrospective rapide permettra de vérifier que le signal ne sur-alerte pas.",
+    status: "next",
+    priority: "normal",
+    bucket: "cool_to_do",
+    project: "signal-renouvellement",
+    source: "manual",
+    requester: "people/maelle-courtois",
+    needs: "codex",
+    effort: "m",
+    nextAction: "Préparer une matrice prédiction/résultat sur les comptes du trimestre.",
+  },
+  {
+    dedupeKey: "seed:portail-partenaire:facturation",
+    title: "Explorer la facturation déléguée partenaire",
+    body: "Idée conservée pour après la bêta; aucun engagement client ne la rend prioritaire aujourd'hui.",
+    status: "triaged",
+    priority: "low",
+    kind: "idea",
+    bucket: "maybe_one_day",
+    project: "portail-partenaire",
+    source: "manual",
+    requester: "people/camille-dervaux",
+    needs: "none",
+    effort: "l",
+    nextAction: "Revoir l'idée après les retours des trois premiers partenaires.",
+  },
+  {
+    dedupeKey: "seed:copilote-onboarding:video",
+    title: "Produire une vidéo guidée avant la bêta",
+    body: "La visite intégrée rend cette vidéo redondante pour le premier groupe pilote.",
+    status: "dropped",
+    priority: "low",
+    bucket: "maybe_one_day",
+    project: "copilote-onboarding",
+    source: "manual",
+    requester: "people/maelle-courtois",
+    needs: "human",
+    effort: "l",
+    nextAction: "Ne rien produire avant d'avoir mesuré la compréhension de la visite intégrée.",
+  },
+];
 
 export class BoucleStore {
   private readonly db: DatabaseSync;
@@ -469,6 +657,7 @@ export class BoucleStore {
     this.migrate();
     this.closeAbandonedRuns();
     this.seedLoops();
+    this.seedTickets();
   }
 
   /** Additive column migrations for DBs created before a column existed. */
@@ -510,7 +699,7 @@ export class BoucleStore {
     if (count.n === 0) {
       this.createLoop({
         name: "Chief of staff",
-        description: "Capture and rank materially-new asks from Slack/Calendar/Gmail/Drive/ClickUp.",
+        description: "Capture and rank materially new asks from Brumeline's synthetic activity.",
         prompt: DEFAULT_CHIEF_PROMPT,
         enabled: false,
         intervalMinutes: 60,
@@ -518,14 +707,13 @@ export class BoucleStore {
         activeStartHour: 8,
         activeEndHour: 18,
         timezone: "Europe/Paris",
-        codexHome: "~/.codex-dataiku",
-        // No codex profile — the codex-dataiku setup is selected via CODEX_HOME, not --profile.
+        codexHome: null,
         profile: null,
       });
     }
     this.ensureLoopByName("Meetings", () => ({
       name: "Meetings",
-      description: "Summarize freshly-recorded meeting transcripts and file Loris's action items as tickets.",
+      description: "Summarize synthetic meeting transcripts and file Nora's action items as tickets.",
       prompt: DEFAULT_MEETINGS_PROMPT,
       enabled: false,
       // Frequent, weekdays only (no meetings on weekends), any hour a transcript lands.
@@ -534,9 +722,8 @@ export class BoucleStore {
       activeStartHour: 0,
       activeEndHour: 0,
       timezone: "Europe/Paris",
-      codexHome: "~/.codex-dataiku",
+      codexHome: null,
       profile: null,
-      // Loris wants the summary reasoning done by Sonnet 5 in t3code, not a local model.
       model: "claude-sonnet-5",
     }));
     this.ensureLoopByName("Project timelines", () => ({
@@ -550,10 +737,25 @@ export class BoucleStore {
       activeStartHour: 9,
       activeEndHour: 19,
       timezone: "Europe/Paris",
-      codexHome: "~/.codex-dataiku",
+      codexHome: null,
       profile: null,
       model: "claude-sonnet-5",
     }));
+  }
+
+  /** Give a brand-new database a representative synthetic board. */
+  private seedTickets(): void {
+    const count = this.db.prepare(`SELECT COUNT(*) AS n FROM tickets`).get() as { n: number };
+    if (count.n !== 0) return;
+    for (const seed of DEFAULT_TICKETS) {
+      const ticket = this.upsert(seed);
+      if (seed.status === "inbox") continue;
+      const snoozedUntil =
+        seed.status === "snoozed"
+          ? new Date(Date.now() + (seed.snoozeDays ?? 1) * DAY_MS).toISOString()
+          : null;
+      this.transition(ticket.ticketId, seed.status, snoozedUntil, "Synthetic first-boot seed", seed.workRef);
+    }
   }
 
   /** Create a loop with the given name only if none exists yet (survives restarts on existing DBs). */

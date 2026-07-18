@@ -17,6 +17,7 @@ import type { ProjectMeta, Ticket } from "./store.ts";
 
 const BRAIN_DIR = resolveBrainDir();
 const BRAIN_PROJECTS_DIR = join(BRAIN_DIR, "projects");
+const GBRAIN_NOOP = join(import.meta.dirname, "..", "scripts", "gbrain-noop");
 
 export type ProjectStatus = "scoping" | "in_progress" | "backlog" | "on_hold" | "done" | "archived";
 
@@ -372,15 +373,12 @@ function gbrainCmd(args: string): string {
 
 let reindexTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Fire-and-forget `gbrain import` + `embed --stale` (debounced) so the brain DB
- * follows file edits. zsh so ~/.zshenv provides the embedding API key.
- */
+/** Fire-and-forget synthetic reindex hook, debounced to follow project edits. */
 export function scheduleBrainReindex(): void {
   if (reindexTimer) clearTimeout(reindexTimer);
   reindexTimer = setTimeout(() => {
     reindexTimer = null;
-    const child = spawn("zsh", ["-c", gbrainCmd(`import '${BRAIN_DIR}' && gbrain embed --stale`)], {
+    const child = spawn(GBRAIN_NOOP, ["import", BRAIN_DIR, "embed", "--stale"], {
       stdio: "ignore",
       detached: true,
     });

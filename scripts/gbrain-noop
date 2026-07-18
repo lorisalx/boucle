@@ -1,0 +1,4 @@
+#!/bin/sh
+
+# Synthetic Phase 1 shim: accept every gbrain-shaped command without side effects.
+exit 0
