@@ -163,6 +163,14 @@ body {
   border-radius: 6px;
 }
 
+/* Free-text fields show focus with the caret; the 2px ring is for keyboard nav.
+   (Un-layered on purpose — the rule above is un-layered too, so a Tailwind
+   `focus-visible:outline-none` utility can never beat it.) */
+textarea:focus-visible,
+[data-slot^="dropdown-menu"]:focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }

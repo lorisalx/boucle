@@ -12,11 +12,46 @@
  *   window.dispatchEvent(new CustomEvent("boucle:capture", { detail: { project } }))
  * (project cards use this to preset their project).
  */
-import { Loader2Icon, MicIcon, PlusIcon, SparklesIcon, SquareIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  FolderIcon,
+  Loader2Icon,
+  MicIcon,
+  PlusIcon,
+  SparklesIcon,
+  SquareIcon,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type ProjectSummary, type TicketKind } from "./api.ts";
-import { Button, KIND_LABEL, KIND_ORDER, KindIcon, Status, cx } from "./ui.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button, Dot, KIND_LABEL, KIND_ORDER, KindIcon, Status, cx } from "./ui.tsx";
+
+/** Quiet pill chip — the base for the kind / project / describe-chat controls. */
+const CHIP =
+  "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-2.5 py-1.5 " +
+  "text-xs font-medium text-muted transition-colors hover:border-border-hover hover:text-fg " +
+  "aria-expanded:border-border-hover aria-expanded:text-fg";
+
+function Kbd({ light, children }: { light?: boolean; children: string }) {
+  return (
+    <kbd
+      className={cx(
+        "rounded border px-1 font-mono text-[10px] leading-4",
+        light ? "border-white/25 text-white/85" : "border-accent/35 text-accent-text",
+      )}
+    >
+      {children}
+    </kbd>
+  );
+}
 
 type VoiceState = "idle" | "requesting" | "recording" | "uploading" | "success" | "error";
 
@@ -120,6 +155,12 @@ export function CaptureModal() {
 
   // "" = Auto (AI finds the project), "__misc" = explicitly no project.
   const resolvedProject = project === "" || project === "__misc" ? null : project;
+  const projectLabel =
+    project === ""
+      ? "Auto"
+      : project === "__misc"
+        ? "Misc"
+        : (projects.find((p) => p.projectId === project)?.title ?? project);
   const voiceBusy = voiceState === "requesting" || voiceState === "recording" || voiceState === "uploading";
 
   const submitOne = useCallback(() => {
@@ -246,12 +287,12 @@ export function CaptureModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 px-4 pt-[16vh]"
+      className="fixed inset-0 z-50 flex animate-in items-start justify-center bg-black/50 px-4 pt-[16vh] fade-in-0 duration-150"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="w-full max-w-xl rounded-2xl border border-border bg-surface p-4 shadow-[var(--float)]">
+      <div className="w-full max-w-xl animate-in rounded-2xl border border-border bg-surface p-4 shadow-[var(--float)] fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2 duration-200 ease-out">
         <div className="flex items-start gap-3">
           <textarea
             ref={inputRef}
@@ -269,7 +310,7 @@ export function CaptureModal() {
             }}
             rows={Math.min(10, Math.max(1, text.split("\n").length))}
             placeholder="Empty your head… one line, or paste a whole Slack message"
-            className="min-w-0 flex-1 resize-none bg-transparent text-base leading-relaxed text-fg placeholder:text-dim focus:outline-none"
+            className="min-w-0 flex-1 resize-none bg-transparent text-[17px] leading-relaxed text-fg placeholder:text-dim focus:outline-none focus-visible:outline-none"
           />
           <Button
             variant="outline"
@@ -318,82 +359,105 @@ export function CaptureModal() {
           </p>
         ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          {!bulk ? (
-            <div className="flex overflow-hidden rounded-md border border-border">
-              {KIND_ORDER.map((k) => (
-                <button
-                  key={k}
-                  onClick={() => setKind(k)}
-                  className={cx(
-                    "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium",
-                    kind === k ? "bg-surface text-fg" : "text-dim hover:text-fg",
-                  )}
-                >
-                  <KindIcon kind={k} /> {KIND_LABEL[k]}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <select
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            className="rounded-md border border-border bg-transparent px-2 py-1 text-xs text-muted outline-none"
+          <div
+            className={cx(
+              "overflow-hidden transition-all duration-200",
+              bulk ? "-ml-2 max-w-0 opacity-0" : "max-w-44 opacity-100",
+            )}
           >
-            <option value="" className="bg-surface text-fg">
-              ✨ Auto — Mistral Boucle routes it
-            </option>
-            <option value="__misc" className="bg-surface text-fg">
-              Misc (no project)
-            </option>
-            {projects.map((p) => (
-              <option key={p.projectId} value={p.projectId} className="bg-surface text-fg">
-                {p.title}
-              </option>
-            ))}
-          </select>
-          {!bulk ? (
-            <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={chat}
-                onChange={(e) => setChat(e.target.checked)}
-                className="accent-[var(--accent)]"
-              />
-              Start describe-chat
-            </label>
-          ) : (
-            <button
-              onClick={submitOne}
-              disabled={busy || voiceBusy}
-              className="ml-auto text-xs text-dim hover:text-fg disabled:opacity-40"
-            >
-              Capture as one item
-            </button>
-          )}
-          {bulk ? (
-            <button
-              onClick={submitSmart}
-              disabled={busy || voiceBusy}
-              className="inline-flex items-center gap-1.5 rounded-md border border-accent px-3 py-1.5 text-xs font-medium text-accent-text hover:bg-accent/10 disabled:opacity-40"
-            >
-              {busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <SparklesIcon className="size-3.5" />}
-              AI split &amp; route
-            </button>
-          ) : (
-            <button
-              onClick={submitOne}
-              disabled={busy || voiceBusy || text.trim().length === 0}
-              className="inline-flex items-center gap-1.5 rounded-md bg-btn px-3 py-1.5 text-xs font-medium text-btn-fg hover:bg-btn-hover disabled:opacity-40"
-            >
-              {busy ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlusIcon className="size-3.5" />}
-              Capture
-            </button>
-          )}
+            <DropdownMenu>
+              <DropdownMenuTrigger className={CHIP} disabled={bulk} title="What is this item?">
+                <KindIcon kind={kind} /> {KIND_LABEL[kind]}
+                <ChevronDownIcon className="size-3 text-dim" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-40">
+                {KIND_ORDER.map((k) => (
+                  <DropdownMenuItem key={k} onClick={() => setKind(k)}>
+                    <KindIcon kind={k} /> {KIND_LABEL[k]}
+                    {kind === k ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className={CHIP} title="Where it lands">
+              {project === "" ? (
+                <SparklesIcon className="size-3.5 text-accent-text" />
+              ) : (
+                <FolderIcon className="size-3.5" />
+              )}
+              {projectLabel}
+              <ChevronDownIcon className="size-3 text-dim" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="max-h-72 w-56">
+              <DropdownMenuItem onClick={() => setProject("")}>
+                <SparklesIcon className="size-3.5 text-accent-text" /> Auto — Boucle routes it
+                {project === "" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setProject("__misc")}>
+                Misc (no project)
+                {project === "__misc" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+              </DropdownMenuItem>
+              {projects.length > 0 ? <DropdownMenuSeparator /> : null}
+              {projects.map((p) => (
+                <DropdownMenuItem key={p.projectId} onClick={() => setProject(p.projectId)}>
+                  {p.title}
+                  {project === p.projectId ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <button
+            onClick={() => setChat(!chat)}
+            title={chat ? "A describe-chat researches + routes it — click to land silently" : "Lands silently — click to start a describe-chat"}
+            className={cx(CHIP, "cursor-pointer", !chat && "text-dim")}
+          >
+            <Dot tone={chat ? "success" : "neutral"} /> describe-chat
+          </button>
+          <button
+            onClick={bulk ? submitSmart : submitOne}
+            disabled={busy || voiceBusy || text.trim().length === 0}
+            className={cx(
+              "ml-auto inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+              "transition-all duration-200 disabled:pointer-events-none disabled:opacity-40",
+              bulk
+                ? "border-accent bg-transparent text-accent-text hover:bg-accent/10"
+                : "border-transparent bg-btn text-btn-fg hover:bg-btn-hover",
+            )}
+          >
+            {busy ? (
+              <Loader2Icon className="size-3.5 animate-spin" />
+            ) : bulk ? (
+              <SparklesIcon className="size-3.5" />
+            ) : (
+              <PlusIcon className="size-3.5" />
+            )}
+            <span key={bulk ? "bulk" : "one"} className="animate-in fade-in-0 duration-150">
+              {bulk ? "AI split & route" : "Capture"}
+            </span>
+            <Kbd light={!bulk}>{bulk ? "⌘⏎" : "⏎"}</Kbd>
+          </button>
         </div>
-        <p className="mt-3 text-[11px] text-dim">
-          {bulk
-            ? "⌘⏎ AI split & route — an agent splits the paste into typed items, routes them to projects, and merges with existing tickets (takes a minute or two)."
-            : "⏎ capture · esc close — a describe-chat researches + routes it; untick to land silently."}
+        <p className="mt-3 text-[11px] leading-relaxed text-dim">
+          {bulk ? (
+            <>
+              Splits the paste into typed items, routes them, and merges with existing tickets (takes a minute or
+              two).{" "}
+              <button
+                onClick={submitOne}
+                disabled={busy || voiceBusy}
+                className="text-muted underline decoration-dotted underline-offset-2 hover:text-fg disabled:opacity-40"
+              >
+                Capture as one item
+              </button>{" "}
+              instead.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-muted">⏎</span> capture · <span className="font-medium text-muted">esc</span> close
+            </>
+          )}
         </p>
       </div>
     </div>
