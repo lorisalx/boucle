@@ -370,23 +370,18 @@
   <div id="ccCap" data-at="5"><p class="cap" style="margin:18px 0 0"><b>The command centre.</b> Every project, every thread, what moved, what's sleeping.</p></div>
 </section>
 
-<!-- 6c · what am I on -->
-<section class="scene" id="s6c" data-steps="2">
+<!-- 6b · capture modal -->
+<section class="scene" id="s6b" data-steps="2">
   <div class="bigmodal" data-at="1">
-    <div class="mh"><b>“What am I on?”</b><span>paste-ready for Slack</span><span class="copy">⧉ Copy</span></div>
-    <div class="slackbody">*What I'm on · July 18*
-
-*Renewal Signal*
-&gt; Internal pilot on twenty accounts
-• Validate renewal alert thresholds
-• Revise the alert email copy
-
-*Partner Portal*
-&gt; Scoping the beta
-• Freeze the partner beta scope
-• Annotate the folder-sharing mockup</div>
+    <div class="capinput"><span id="capmType"></span><span class="caret"></span></div>
+    <div class="typerow">
+      <span class="tchip">▤ Task</span><span class="tchip hot">✦ Idea</span><span class="tchip">❋ Conv</span><span class="tchip">◈ Scope</span>
+      <span class="route">✦ Auto · Mistral Boucle routes it ▾</span>
+    </div>
+    <div class="caprow"><label>☑ Start describe-chat</label><span class="go">+ Capture</span></div>
+    <div class="mhint">↵ capture · esc close. A describe-chat researches and routes it; untick to land silently.</div>
   </div>
-  <p class="cap" data-at="2" style="margin-top:30px">Someone pings “what are you working on?”<br><b>One button. The whole fleet, standup-ready.</b></p>
+  <p class="cap" data-at="2" style="margin-top:30px"><b>⌘K from anywhere.</b> One line, voice, or a whole pasted Slack thread.<br>A describe-chat researches it, then Boucle files it.</p>
 </section>
 
 <!-- 6d · projects page: the brain shows -->
@@ -595,6 +590,14 @@ onEnter.s4=()=>{
       n.textContent=(++count);
     }, 250+i*95);
   }
+};
+
+/* s6b: capture modal */
+let capmTyped=false;
+onEnter.s6b=()=>{capmTyped=false;document.getElementById('capmType').textContent=''};
+onStep.s6b=st=>{
+  if(st>=1&&!capmTyped){capmTyped=true;
+    type(document.getElementById('capmType'),'the renewal thresholds look off, check the orange alert with Bastien',26)}
 };
 
 /* s4b: live survey results */
