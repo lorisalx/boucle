@@ -1,9 +1,7 @@
 import {
   ArrowLeftIcon,
-  ArrowUpRightIcon,
   BotIcon,
   CheckIcon,
-  CheckSquareIcon,
   ClockIcon,
   CopyIcon,
   FlagIcon,
@@ -45,8 +43,6 @@ function eventIcon(kind: TicketEvent["kind"]): ReactNode {
       return <FolderIcon className={c} />;
     case "chat":
       return <MessageSquareIcon className={c} />;
-    case "clickup":
-      return <CheckSquareIcon className={c} />;
     default:
       return <PencilIcon className={c} />;
   }
@@ -227,25 +223,6 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                   <MessageSquareIcon className="size-3.5" /> Start chat
                 </Button>
               )}
-              {ticket.clickupTaskId ? (
-                <a
-                  href={`https://app.clickup.com/t/${ticket.clickupTaskId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-link hover:border-border-hover hover:bg-bg"
-                >
-                  ClickUp <ArrowUpRightIcon className="size-3" />
-                </a>
-              ) : ticket.wantsClickup ? (
-                <Button variant="outline" onClick={() => actions.cancelClickup(ticket.ticketId)}>
-                  ClickUp queued — cancel
-                </Button>
-              ) : (
-                <Button variant="outline" onClick={() => actions.promoteClickup(ticket.ticketId)}>
-                  <CheckSquareIcon className="size-3.5" /> Create ClickUp task
-                </Button>
-              )}
-
               <div className="ml-auto flex items-center gap-1">
                 <KindSelect
                   value={ticket.kind}
@@ -286,7 +263,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submitEnrich();
                 }}
                 rows={2}
-                placeholder="What did the capture get wrong or miss? e.g. the linked project is slack-salesforce-updater; “Louis” is actually me (Loris). ⌘↵ to send."
+                placeholder="What did the capture get wrong or miss? e.g. the linked project is portail-partenaire; “Noémie” is actually Nora. ⌘↵ to send."
                 className="w-full resize-y rounded-md border border-border bg-transparent px-2.5 py-2 text-sm text-fg placeholder:text-dim focus:border-focus focus:outline-none"
               />
               <div className="mt-2 flex items-center gap-3">
@@ -307,8 +284,8 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                 </Button>
                 <span className="text-xs text-muted">
                   {enriching
-                    ? "Re-investigating across Slack, Drive, ClickUp… this can take a few minutes."
-                    : "Codex searches for more context and updates this ticket in place."}
+                    ? "Re-investigating the synthetic Brumeline brain… this can take a few minutes."
+                    : "Codex searches the synthetic brain and updates this ticket in place."}
                 </span>
               </div>
             </div>

@@ -46,8 +46,6 @@ const { values, positionals } = parseArgs({
     "due-at": { type: "string" },
     "next-action": { type: "string" },
     "thread-id": { type: "string" },
-    "clickup-task-id": { type: "string" },
-    "wants-clickup": { type: "string" },
     status: { type: "string" },
     to: { type: "string" },
     "snooze-until": { type: "string" },
@@ -136,8 +134,6 @@ if (group === "ticket" && action === "upsert") {
   if (values["due-at"] !== undefined) input.dueAt = values["due-at"] as string;
   if (values["next-action"] !== undefined) input.nextAction = values["next-action"] as string;
   if (values["thread-id"] !== undefined) input.threadId = values["thread-id"] as string;
-  if (values["clickup-task-id"] !== undefined) input.clickupTaskId = values["clickup-task-id"] as string;
-  if (values["wants-clickup"] !== undefined) input.wantsClickup = values["wants-clickup"] === "true";
   const ticket = store.setFields(input);
   out(json, ticket, `Updated ${ticketLine(ticket)}`);
 } else if (group === "next") {

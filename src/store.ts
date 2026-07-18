@@ -29,7 +29,7 @@ export type TicketBucket = "urgent" | "to_do_next" | "cool_to_do" | "maybe_one_d
 export type TicketKind = "task" | "idea" | "conv" | "scope";
 export type TicketNeeds = "claude" | "codex" | "human" | "none";
 export type TicketEffort = "xs" | "s" | "m" | "l" | "xl";
-export type TicketSource = "slack" | "gmail" | "gcal" | "clickup" | "manual";
+export type TicketSource = "slack" | "gmail" | "gcal" | "manual";
 export type TicketCreatedBy = "chief" | "human";
 export type TicketSourceDecision = "ticketed" | "ignored" | "merged";
 export type TicketEventKind =
@@ -39,7 +39,6 @@ export type TicketEventKind =
   | "project"
   | "needs"
   | "chat"
-  | "clickup"
   | "note"
   | "field";
 
@@ -79,9 +78,7 @@ export interface Ticket {
   snoozedUntil: string | null;
   nextAction: string | null;
   threadId: string | null;
-  wantsClickup: boolean;
-  clickupTaskId: string | null;
-  /** A pointer to the work that resolved this — e.g. "claude --resume <id> (cwd: …)", a ClickUp/PR URL. */
+  /** A pointer to the work that resolved this — e.g. a resumable agent session or PR URL. */
   workRef: string | null;
   dedupeKey: string;
   createdAt: string;
@@ -139,8 +136,6 @@ export interface SetTicketFieldsInput {
   dueAt?: string | null;
   nextAction?: string | null;
   threadId?: string | null;
-  wantsClickup?: boolean;
-  clickupTaskId?: string | null;
   workRef?: string | null;
 }
 
@@ -178,7 +173,7 @@ export interface ProjectMeta {
 // ===============================
 
 export type LoopRunStatus = "running" | "ok" | "error" | "timeout";
-export type LoopRunTrigger = "schedule" | "manual";
+export type LoopRunTrigger = "schedule" | "manual" | "smart_capture" | "enrich";
 
 export interface Loop {
   loopId: string;
@@ -293,15 +288,15 @@ const TICKET_COLUMNS = `
   ticket_id AS ticketId, title, body, status, priority, kind, bucket, score, project, source,
   source_ref AS sourceRef, permalink, requester, needs, effort,
   due_at AS dueAt, snoozed_until AS snoozedUntil, next_action AS nextAction,
-  thread_id AS threadId, wants_clickup AS wantsClickup, clickup_task_id AS clickupTaskId,
+  thread_id AS threadId,
   work_ref AS workRef,
   dedupe_key AS dedupeKey, created_at AS createdAt, updated_at AS updatedAt, created_by AS createdBy
 `;
 
-type RawTicket = Omit<Ticket, "wantsClickup"> & { wantsClickup: number };
+type RawTicket = Ticket;
 
 function toTicket(row: RawTicket): Ticket {
-  return { ...row, wantsClickup: row.wantsClickup === 1 };
+  return row;
 }
 
 const LOOP_COLUMNS = `
@@ -627,8 +622,7 @@ export class BoucleStore {
         bucket TEXT, score REAL NOT NULL DEFAULT 0,
         project TEXT, source TEXT NOT NULL, source_ref TEXT, permalink TEXT, requester TEXT,
         needs TEXT NOT NULL DEFAULT 'human', effort TEXT, due_at TEXT, snoozed_until TEXT,
-        next_action TEXT, thread_id TEXT, wants_clickup INTEGER NOT NULL DEFAULT 0,
-        clickup_task_id TEXT, work_ref TEXT, dedupe_key TEXT NOT NULL UNIQUE,
+        next_action TEXT, thread_id TEXT, work_ref TEXT, dedupe_key TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT 'chief'
       );
       CREATE INDEX IF NOT EXISTS idx_tickets_status_score ON tickets(status, score DESC);
@@ -866,8 +860,6 @@ export class BoucleStore {
       snoozedUntil: existing?.snoozedUntil ?? null,
       nextAction: input.nextAction ?? existing?.nextAction ?? null,
       threadId: existing?.threadId ?? input.threadId ?? null,
-      wantsClickup: existing?.wantsClickup ?? false,
-      clickupTaskId: existing?.clickupTaskId ?? null,
       workRef: existing?.workRef ?? null,
       dedupeKey: input.dedupeKey,
       createdAt: existing?.createdAt ?? nowIso,
@@ -885,14 +877,14 @@ export class BoucleStore {
     ticket.score = computeScore(ticket, nowMs);
     this.db
       .prepare(
-        `INSERT INTO tickets (ticket_id,title,body,status,priority,kind,bucket,score,project,source,source_ref,permalink,requester,needs,effort,due_at,snoozed_until,next_action,thread_id,wants_clickup,clickup_task_id,work_ref,dedupe_key,created_at,updated_at,created_by)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO tickets (ticket_id,title,body,status,priority,kind,bucket,score,project,source,source_ref,permalink,requester,needs,effort,due_at,snoozed_until,next_action,thread_id,work_ref,dedupe_key,created_at,updated_at,created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         ticket.ticketId, ticket.title, ticket.body, ticket.status, ticket.priority, ticket.kind, ticket.bucket, ticket.score,
         ticket.project, ticket.source, ticket.sourceRef, ticket.permalink, ticket.requester, ticket.needs,
         ticket.effort, ticket.dueAt, ticket.snoozedUntil, ticket.nextAction, ticket.threadId,
-        ticket.wantsClickup ? 1 : 0, ticket.clickupTaskId, ticket.workRef, ticket.dedupeKey, ticket.createdAt,
+        ticket.workRef, ticket.dedupeKey, ticket.createdAt,
         ticket.updatedAt, ticket.createdBy,
       );
     this.recordEvent(ticket.ticketId, "created", `Captured from ${ticket.source}`, nowIso);
@@ -902,12 +894,12 @@ export class BoucleStore {
   private writeTicket(t: Ticket): void {
     this.db
       .prepare(
-        `UPDATE tickets SET title=?,body=?,status=?,priority=?,kind=?,bucket=?,score=?,project=?,source=?,source_ref=?,permalink=?,requester=?,needs=?,effort=?,due_at=?,snoozed_until=?,next_action=?,thread_id=?,wants_clickup=?,clickup_task_id=?,work_ref=?,created_by=?,updated_at=? WHERE ticket_id=?`,
+        `UPDATE tickets SET title=?,body=?,status=?,priority=?,kind=?,bucket=?,score=?,project=?,source=?,source_ref=?,permalink=?,requester=?,needs=?,effort=?,due_at=?,snoozed_until=?,next_action=?,thread_id=?,work_ref=?,created_by=?,updated_at=? WHERE ticket_id=?`,
       )
       .run(
         t.title, t.body, t.status, t.priority, t.kind, t.bucket, t.score, t.project, t.source, t.sourceRef, t.permalink,
         t.requester, t.needs, t.effort, t.dueAt, t.snoozedUntil, t.nextAction, t.threadId,
-        t.wantsClickup ? 1 : 0, t.clickupTaskId, t.workRef, t.createdBy, t.updatedAt, t.ticketId,
+        t.workRef, t.createdBy, t.updatedAt, t.ticketId,
       );
   }
 
@@ -957,8 +949,6 @@ export class BoucleStore {
       dueAt: input.dueAt !== undefined ? input.dueAt : prev.dueAt,
       nextAction: input.nextAction !== undefined ? input.nextAction : prev.nextAction,
       threadId: input.threadId !== undefined ? input.threadId : prev.threadId,
-      wantsClickup: input.wantsClickup ?? prev.wantsClickup,
-      clickupTaskId: input.clickupTaskId !== undefined ? input.clickupTaskId : prev.clickupTaskId,
       workRef: input.workRef !== undefined ? input.workRef : prev.workRef,
       updatedAt: iso,
     };
@@ -970,15 +960,13 @@ export class BoucleStore {
     if (updated.project !== prev.project) this.recordEvent(updated.ticketId, "project", `Project → ${updated.project ?? "none"}`, iso);
     if (updated.needs !== prev.needs) this.recordEvent(updated.ticketId, "needs", `Needs → ${updated.needs}`, iso);
     if (updated.threadId !== prev.threadId) this.recordEvent(updated.ticketId, "chat", updated.threadId ? "Linked a chat" : "Unlinked chat", iso);
-    if (updated.clickupTaskId !== prev.clickupTaskId && updated.clickupTaskId) this.recordEvent(updated.ticketId, "clickup", "Created ClickUp task", iso);
-    if (updated.wantsClickup !== prev.wantsClickup) this.recordEvent(updated.ticketId, "clickup", updated.wantsClickup ? "Queued for ClickUp" : "Cancelled ClickUp promotion", iso);
     return updated;
   }
 
   private query(where: string, params: unknown[]): Ticket[] {
     const rows = this.db
       .prepare(`SELECT ${TICKET_COLUMNS} FROM tickets WHERE ${where} ORDER BY score DESC, updated_at ASC`)
-      .all(...(params as never[])) as RawTicket[];
+      .all(...(params as never[])) as unknown as RawTicket[];
     return rows.map(toTicket);
   }
 
@@ -994,7 +982,7 @@ export class BoucleStore {
         `SELECT ${TICKET_COLUMNS} FROM tickets
          WHERE status = 'snoozed' AND snoozed_until IS NOT NULL AND snoozed_until <= ?`,
       )
-      .all(nowIso) as RawTicket[];
+      .all(nowIso) as unknown as RawTicket[];
     for (const row of due) {
       const t = toTicket(row);
       const woke: Ticket = { ...t, status: "next", snoozedUntil: null, updatedAt: nowIso };
@@ -1032,7 +1020,7 @@ export class BoucleStore {
            AND (? IS NULL OR project = ?)
          ORDER BY score DESC, updated_at ASC LIMIT ?`,
       )
-      .all(nowIso, project ?? null, project ?? null, limit) as RawTicket[];
+      .all(nowIso, project ?? null, project ?? null, limit) as unknown as RawTicket[];
     return rows.map(toTicket);
   }
 
@@ -1259,14 +1247,17 @@ export class BoucleStore {
   }
 
   getLoopCostSummary(): LoopCostSummary {
+    // Vibe reports per-invocation cost, so loop, capture, and enrich rows are totaled here.
+    // Conversations API responses do not expose billed cost; estimating browser chat,
+    // describe, or brief spend would invent numbers, so those calls are excluded.
     const row = this.db.prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs`).get() as { total: number };
     const totalCostUsd = row.total;
     return {
       totalCostUsd,
       warning: totalCostUsd >= 10
         ? totalCostUsd >= 30
-          ? `Vibe loop budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $30.00).`
-          : `Vibe loop spend has crossed the $10 warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
+          ? `Vibe budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $30.00).`
+          : `Vibe spend has crossed the $10 warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
         : null,
       blocked: totalCostUsd >= 30,
     };

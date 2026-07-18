@@ -82,7 +82,9 @@ function projectCounts(projects: ProjectSummary[]) {
 }
 
 function compactPath(path: string): string {
-  return path.replace("/Users/loris.alexandre@dataiku.com/Documents/dataiku/", "");
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  const brainIndex = parts.lastIndexOf("fake-brain");
+  return brainIndex >= 0 ? parts.slice(brainIndex).join("/") : (parts.at(-1) ?? path);
 }
 
 // ===============================

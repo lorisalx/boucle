@@ -46,10 +46,13 @@ export class LoopScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastBudgetWarning: string | null = null;
 
-  constructor(
-    private readonly store: BoucleStore,
-    private readonly dbPath: string,
-  ) {}
+  private readonly store: BoucleStore;
+  private readonly dbPath: string;
+
+  constructor(store: BoucleStore, dbPath: string) {
+    this.store = store;
+    this.dbPath = dbPath;
+  }
 
   start(): void {
     if (this.timer !== null) return;
@@ -96,10 +99,11 @@ export class LoopScheduler {
   enrichTicket(ticketId: string, prompt: string): boolean {
     const key = `enrich:${ticketId}`;
     if (this.running.has(key)) return false;
+    this.assertVibeBudget();
     this.running.add(key);
     this.store.addEvent(ticketId, "note", "Vibe re-run requested");
     const base = this.store.listLoops()[0] ?? null;
-    this.execVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` })
+    this.execTrackedVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` }, "enrich")
       .then((res) => {
         const status = res.timedOut ? "timed out" : res.code === 0 ? "finished" : "failed";
         this.store.addEvent(ticketId, "note", `Vibe re-run ${status}`);
@@ -119,6 +123,7 @@ export class LoopScheduler {
   /** One-shot Vibe run that parses pasted text into Boucle items through MCP. */
   smartCapture(batchId: string, prompt: string): void {
     const key = `smart:${batchId}`;
+    this.assertVibeBudget();
     this.running.add(key);
     this.smartRuns.set(batchId, {
       batchId,
@@ -128,7 +133,7 @@ export class LoopScheduler {
       detail: "",
     });
     const base = this.store.listLoops()[0] ?? null;
-    this.execVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` })
+    this.execTrackedVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` }, "smart_capture")
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
         const prev = this.smartRuns.get(batchId);
@@ -157,14 +162,7 @@ export class LoopScheduler {
   }
 
   private run(loop: Loop, trigger: LoopRunTrigger): LoopRun {
-    const budget = this.store.getLoopCostSummary();
-    if (budget.warning && budget.warning !== this.lastBudgetWarning) {
-      console.warn(budget.warning);
-      this.lastBudgetWarning = budget.warning;
-    }
-    if (budget.blocked) {
-      throw new Error(budget.warning ?? "Vibe loop budget exhausted; refusing to start a new run.");
-    }
+    this.assertVibeBudget();
 
     this.running.add(loop.loopId);
     const run = this.store.recordRunStart(loop.loopId, trigger);
@@ -226,6 +224,56 @@ export class LoopScheduler {
       mcpUrl: `http://127.0.0.1:${BOUCLE_PORT}/mcp`,
       workdir: process.cwd(),
     });
+  }
+
+  /** Apply the cumulative hard stop to every Vibe entry point. */
+  assertVibeBudget(): void {
+    const budget = this.store.getLoopCostSummary();
+    if (budget.warning && budget.warning !== this.lastBudgetWarning) {
+      console.warn(budget.warning);
+      this.lastBudgetWarning = budget.warning;
+    }
+    if (budget.blocked) {
+      throw new Error(budget.warning ?? "Vibe budget exhausted; refusing to start a new invocation.");
+    }
+  }
+
+  /** Store one-shot Vibe work beside loop runs so its reported cost and session count toward the global budget. */
+  private execTrackedVibe(spec: VibeExecSpec, trigger: "smart_capture" | "enrich"): Promise<VibeExecResult> {
+    const syntheticLoopId = `vibe:${trigger}`;
+    const run = this.store.recordRunStart(syntheticLoopId, trigger);
+    return this.execVibe(spec)
+      .then((res) => {
+        const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
+        this.store.recordRunFinish(
+          run.runId,
+          syntheticLoopId,
+          status,
+          res.code,
+          res.output.slice(-MAX_SUMMARY_CHARS),
+          res.costUsd,
+          res.sessionId,
+        );
+        const updatedBudget = this.store.getLoopCostSummary();
+        if (updatedBudget.warning && updatedBudget.warning !== this.lastBudgetWarning) {
+          console.warn(updatedBudget.warning);
+          this.lastBudgetWarning = updatedBudget.warning;
+        }
+        return res;
+      })
+      .catch((err: unknown) => {
+        const detail = err instanceof Error ? err.message : String(err);
+        this.store.recordRunFinish(
+          run.runId,
+          syntheticLoopId,
+          "error",
+          null,
+          detail.slice(-MAX_SUMMARY_CHARS),
+          null,
+          null,
+        );
+        throw err;
+      });
   }
 }
 

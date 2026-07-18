@@ -11,7 +11,7 @@ export type TicketPriority = "urgent" | "high" | "normal" | "low";
 export type TicketBucket = "urgent" | "to_do_next" | "cool_to_do" | "maybe_one_day";
 export type TicketKind = "task" | "idea" | "conv" | "scope";
 export type TicketNeeds = "claude" | "codex" | "human" | "none";
-export type TicketSource = "slack" | "gmail" | "gcal" | "clickup" | "manual";
+export type TicketSource = "slack" | "gmail" | "gcal" | "manual";
 export type TicketEventKind =
   | "created"
   | "status"
@@ -19,7 +19,6 @@ export type TicketEventKind =
   | "project"
   | "needs"
   | "chat"
-  | "clickup"
   | "note"
   | "field";
 
@@ -43,8 +42,6 @@ export interface Ticket {
   snoozedUntil: string | null;
   nextAction: string | null;
   threadId: string | null;
-  wantsClickup: boolean;
-  clickupTaskId: string | null;
   workRef: string | null;
   dedupeKey: string;
   createdAt: string;
@@ -62,7 +59,6 @@ export interface TicketEvent {
 
 export interface Settings {
   mistralConfigured: boolean;
-  clickupConfigured: boolean;
 }
 
 export interface ChatEntry {
@@ -219,10 +215,6 @@ export const api = {
     post(`/api/tickets/${id}/spawn-chat`, {}).then((r) =>
       json<{ threadId: string; project: string; openUrl: string }>(r),
     ),
-  createClickup: (id: string) =>
-    post(`/api/tickets/${id}/clickup`, {}).then((r) =>
-      json<{ ticket: Ticket; url: string; listLabel: string }>(r),
-    ),
   createEpic: (input: {
     title: string;
     project?: string | null;
@@ -270,8 +262,6 @@ export const api = {
   setLoopState: (enabled: boolean) =>
     post("/api/loop-state", { enabled }).then((r) => json<{ enabled: boolean }>(r)),
   settings: () => fetch("/api/settings").then((r) => json<Settings>(r)),
-  saveSettings: (patch: Partial<{ clickupToken: string }>) =>
-    post("/api/settings", patch).then((r) => json<{ ok: boolean }>(r)),
   chat: {
     get: (conversationId: string) =>
       fetch(`/api/chats/${encodeURIComponent(conversationId)}`).then((r) => json<ChatTranscript>(r)),

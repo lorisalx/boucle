@@ -80,15 +80,6 @@ export function useActions(refresh: () => void) {
       wake: (id: string) => after(api.transition(id, "next")),
       setPriority: (id: string, priority: TicketPriority) => after(api.setFields(id, { priority })),
       setBucket: (id: string, bucket: TicketBucket) => after(api.setFields(id, { bucket })),
-      promoteClickup: (id: string) =>
-        api
-          .createClickup(id)
-          .then((r) => {
-            if (r.url) window.open(r.url, "_blank");
-            refresh();
-          })
-          .catch((e) => alert(`ClickUp failed: ${e.message ?? e}`)),
-      cancelClickup: (id: string) => after(api.setFields(id, { wantsClickup: false })),
       openChat: (threadId?: string | null) => {
         if (isMistralConversationId(threadId)) window.location.assign(`/chats/${threadId}`);
       },
@@ -261,14 +252,6 @@ function ItemRow({ item, actions, dormant }: { item: Ticket; actions: Actions; d
       >
         {item.title}
       </button>
-      {item.clickupTaskId ? (
-        <span
-          className="shrink-0 rounded border border-border px-1 font-mono text-[9px] font-medium tracking-wide text-muted"
-          title="Shown in ClickUp"
-        >
-          CU
-        </span>
-      ) : null}
       {due && !dormant ? <span className="shrink-0 text-[11px] font-medium text-danger">{due}</span> : null}
       {sleepsUntil ? <span className="shrink-0 text-[11px] text-dim">💤 {sleepsUntil}</span> : null}
       <span className="hidden shrink-0 group-hover/item:inline-flex">
@@ -342,7 +325,6 @@ function ProjectCard({
   const [showDormant, setShowDormant] = useState(false);
   const active = useMemo(() => items.filter((t) => !isDormant(t)).sort(byBucket), [items]);
   const dormant = useMemo(() => items.filter(isDormant).sort(byBucket), [items]);
-  const shown = active.filter((t) => t.clickupTaskId).length;
 
   const setStatus = (s: ProjectStatus) => {
     if (!projectId) return;
@@ -363,9 +345,9 @@ function ProjectCard({
             </button>
             <span
               className="ml-auto shrink-0 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] text-dim"
-              title="Items visible in ClickUp / active items — Boucle is the source of truth, ClickUp is the shop window"
+              title="Active items in this project"
             >
-              {synthetic ? "private" : `CU ${shown}/${active.length}`}
+              {synthetic ? "private" : `${active.length} active`}
             </span>
           </div>
           {status ? (

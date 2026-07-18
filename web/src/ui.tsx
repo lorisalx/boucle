@@ -1,7 +1,6 @@
 import {
   BotIcon,
   CalendarIcon,
-  CheckSquareIcon,
   LightbulbIcon,
   ListTodoIcon,
   MailIcon,
@@ -345,8 +344,6 @@ export function SourceIcon({ source, className }: { source: TicketSource; classN
       return <MailIcon className={c} />;
     case "gcal":
       return <CalendarIcon className={c} />;
-    case "clickup":
-      return <CheckSquareIcon className={c} />;
     default:
       return <PenLineIcon className={c} />;
   }

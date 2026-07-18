@@ -10,9 +10,8 @@ The open parts of the stack—Vibe CLI, Devstral and Voxtral weights, and this r
 
 | Part | Mistral product | Model | Role |
 |---|---|---|---|
-| Loop runner | Vibe CLI | `devstral-2512` | Runs agentic loops against Boucle's local MCP tools |
-| Browser chats, smart capture, enrich | Agents API | `mistral-medium-3.5` | Creates conversations and relays local tool calls |
-| Capture routing | Agents API | `ministral-8b-2512` | Handles cheap classification |
+| Browser chats, describe, project brief | Agents API | `mistral-medium-3.5` | Creates browser conversations and relays local tool calls |
+| Loops, smart capture, routing, enrich | Vibe CLI | `devstral-2512` | Runs agentic work against Boucle's local MCP tools |
 | Voice capture | Voxtral batch transcription | `voxtral-mini-latest` | Transcribes short recordings at $0.003/min |
 | Voice output (stretch) | Voxtral TTS | `voxtral-mini-tts-latest` | Reads a queue briefing aloud |
 | Brain | Local Markdown + SQLite | — | Keeps the demo dataset fully synthetic |
@@ -44,4 +43,4 @@ pnpm --dir web dev
 
 ## Budget guardrails
 
-The demo has a hard $40 credit budget. Every Vibe run is capped at `$0.25` and 30 turns; loops ship disabled and use intervals of at least 60 minutes when enabled. Run cost is recorded and totaled in the Loops view. The server warns at $10 cumulative spend and refuses new runs at $30, preserving demo-day margin. Expected development spend is roughly $10–15.
+The demo has a hard $40 credit budget. Every Vibe invocation is capped at `$0.25` and 30 turns; loops ship disabled and use intervals of at least 60 minutes when enabled. Loop, smart-capture, routing, and enrich costs are recorded and totaled in the Loops view. The server warns at $10 cumulative Vibe spend and refuses any new Vibe invocation at $30, preserving demo-day margin. The Conversations API does not report per-call cost, so browser chat, describe, and brief calls are not assigned invented estimates. Expected development spend is roughly $10–15.

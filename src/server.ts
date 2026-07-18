@@ -13,7 +13,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
-import { BOUCLE_PORT, SPAWNED_CHAT_GUARDRAILS, isMistralConfigured, resolveDbPath } from "./config.ts";
+import { BOUCLE_PORT, SPAWNED_CHAT_GUARDRAILS, isMistralConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import {
   BoucleStore,
   type CreateLoopInput,
@@ -35,7 +35,6 @@ import {
   spawnMistralProjectChat,
   transcribe,
 } from "./mistral.ts";
-import { createClickupTask, getClickupConfig } from "./clickup.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -290,17 +289,7 @@ app.get("/api/loops/:id/runs", (c) => {
 app.get("/api/settings", (c) => {
   return c.json({
     mistralConfigured: isMistralConfigured(),
-    clickupConfigured: getClickupConfig(store) !== null,
   });
-});
-app.post("/api/settings", async (c) => {
-  const body = (await c.req.json()) as Partial<{
-    clickupToken: string;
-  }>;
-  if (body.clickupToken !== undefined && body.clickupToken.length > 0) {
-    store.setMeta("clickupToken", body.clickupToken);
-  }
-  return c.json({ ok: true });
 });
 
 app.post("/api/tickets/:id/spawn-chat", async (c) => {
@@ -345,7 +334,14 @@ app.post("/api/epics", async (c) => {
   // The capture itself is always instant; routing happens behind it. A describe-chat
   // already researches + sets the project, so the micro-run only covers the chat-less path.
   if (!wantsChat && !ticket.project && body.autoRoute) {
-    scheduler.smartCapture(randomUUID().slice(0, 8), buildRoutePrompt(ticket));
+    try {
+      scheduler.smartCapture(randomUUID().slice(0, 8), buildRoutePrompt(ticket));
+    } catch (error) {
+      return c.json(
+        { ticket, openUrl: null, chat: false, error: error instanceof Error ? error.message : String(error) },
+        402,
+      );
+    }
   }
   if (!wantsChat || !isMistralConfigured()) {
     return c.json({ ticket, openUrl: null, chat: false });
@@ -362,12 +358,13 @@ app.post("/api/epics", async (c) => {
 
 /** Micro-run prompt: file one just-captured, project-less item into the right project. */
 function buildRoutePrompt(t: Ticket): string {
+  const brainDir = resolveBrainDir();
   const projects = listProjects(store.listOpen(), store.listProjectMeta())
     .filter((p) => p.status === "in_progress" || p.status === "scoping" || p.openTicketCount > 0)
     .map((p) => `- ${p.projectId} — ${p.title}${p.summary ? ` — ${p.summary.slice(0, 120)}` : ""}`)
     .join("\n");
   return [
-    "Loris quick-captured a single item in Boucle without picking a project. Give it a home.",
+    "Nora Bellier, Brumeline's chief of staff, quick-captured a single item in Boucle without picking a project. Give it a home.",
     "",
     `Item: ticketId ${t.ticketId} | kind ${t.kind} | title: ${t.title}`,
     "",
@@ -376,42 +373,12 @@ function buildRoutePrompt(t: Ticket): string {
     "",
     "Do this:",
     "1. If the title clearly belongs to ONE project from the list, call ticket_set(ticketId, { project: <slug> }).",
-    "   You may skim the local gbrain notes under /Users/loris.alexandre@dataiku.com/Documents/dataiku to disambiguate,",
-    "   but do NOT open Slack/Gmail/Calendar/Drive/ClickUp.",
+    `   You may skim only Brumeline's synthetic brain notes under ${brainDir} to disambiguate,`,
+    "   but do NOT open an external connector or read files outside that synthetic brain.",
     "2. If it is genuinely cross-project or unclear, do nothing — leaving it in misc is correct.",
     "3. At most one ticket_set. Never create tickets, never change the title, never message anyone.",
   ].join("\n");
 }
-
-app.post("/api/tickets/:id/clickup", async (c) => {
-  const ticket = store.getById(c.req.param("id"));
-  if (!ticket) return c.json({ error: "ticket not found" }, 404);
-  if (ticket.clickupTaskId) {
-    return c.json({ error: "ticket already has a ClickUp task" }, 409);
-  }
-  const cfg = getClickupConfig(store);
-  if (cfg === null) {
-    return c.json({ error: "ClickUp not configured. Add the API key in Settings." }, 400);
-  }
-  try {
-    const task = await createClickupTask(cfg, {
-      title: ticket.title,
-      body: ticket.body,
-      nextAction: ticket.nextAction,
-      project: ticket.project,
-      requester: ticket.requester,
-      permalink: ticket.permalink,
-    });
-    const updated = store.setFields({
-      ticketId: ticket.ticketId,
-      clickupTaskId: task.id,
-      wantsClickup: false,
-    });
-    return c.json({ ticket: updated, url: task.url, listLabel: task.listLabel });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
-  }
-});
 
 // Smart capture — paste raw text (a Slack message, meeting notes…); a one-shot
 // Vibe run splits it into typed items, routes them to projects, and merges with
@@ -430,11 +397,20 @@ app.post("/api/capture/smart", async (c) => {
   const body = (await c.req.json()) as { text: string; project?: string | null };
   const text = (body.text ?? "").trim();
   if (!text) return c.json({ error: "text required" }, 400);
-  return c.json(startSmartCapture(text, body.project ?? null), 202);
+  try {
+    return c.json(startSmartCapture(text, body.project ?? null), 202);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
+  }
 });
 
 app.post("/api/capture/voice", async (c) => {
   if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  try {
+    scheduler.assertVibeBudget();
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
+  }
   let form: FormData;
   try {
     form = await c.req.formData();
@@ -456,10 +432,11 @@ app.post("/api/capture/voice", async (c) => {
 app.get("/api/capture/smart", (c) => c.json(scheduler.listSmartRuns()));
 
 function buildSmartCapturePrompt(text: string, preset: string | null, projects: string, batchId: string): string {
+  const brainDir = resolveBrainDir();
   return [
-    "Loris pasted raw text into Boucle's quick-capture (usually a Slack message or meeting notes).",
-    "Parse it into Boucle items using the boucle MCP tools. Work from the text itself; only open a",
-    "connector if a reference in the text truly needs disambiguation. Do not message anyone.",
+    "Nora Bellier, Brumeline's chief of staff, pasted synthetic text into Boucle's quick-capture.",
+    "Parse it into Boucle items using the boucle MCP tools. Work from the text itself and, only when",
+    `needed, Brumeline's synthetic brain under ${brainDir}. Do not read outside it or message anyone.`,
     "",
     "Pasted text:",
     '"""',
@@ -491,15 +468,21 @@ app.post("/api/tickets/:id/enrich", async (c) => {
   if (!ticket) return c.json({ error: "ticket not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { note?: string };
   const note = (body.note ?? "").trim();
-  const started = scheduler.enrichTicket(ticket.ticketId, buildEnrichPrompt(ticket, note));
+  let started: boolean;
+  try {
+    started = scheduler.enrichTicket(ticket.ticketId, buildEnrichPrompt(ticket, note));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
+  }
   if (!started) return c.json({ error: "a Vibe re-run is already in progress for this ticket" }, 409);
   return c.json({ ok: true }, 202);
 });
 
 /** Prompt for a one-shot Vibe run that re-investigates a ticket with a human correction note. */
 function buildEnrichPrompt(t: Ticket, note: string): string {
+  const brainDir = resolveBrainDir();
   const lines = [
-    "Loris reviewed this captured ticket in Boucle and added a correction/context note.",
+    "Nora Bellier, Brumeline's chief of staff, reviewed this captured ticket and added a correction/context note.",
     "Re-investigate it, then update the SAME ticket in place — never create a duplicate.",
     "",
     "Ticket:",
@@ -514,20 +497,19 @@ function buildEnrichPrompt(t: Ticket, note: string): string {
   if (t.body.trim().length > 0) lines.push("", "Current body:", t.body.trim());
   lines.push(
     "",
-    "Loris's note (authoritative — apply the corrections it states):",
+    "Nora's note (authoritative — apply the corrections it states):",
     note.length > 0 ? note : "(no note — just dig for more context)",
     "",
     "Do this:",
     "1. Take the note as ground truth: fix the project slug, who people actually are, the real ask, etc.",
-    "2. Search the connectors (Slack, Gmail, Calendar, Drive/Docs, ClickUp) and the local gbrain in " +
-      "/Users/loris.alexandre@dataiku.com/Documents/dataiku for context that completes the picture: the real ask, " +
+    `2. Search only Brumeline's synthetic brain in ${brainDir} for context that completes the picture: the real ask, ` +
       "who's involved, the blocker, the deadline, the right project, and one concrete next action.",
     "3. Call ticket_get(ticketId) for the latest, then ticket_set(ticketId, …) to correct " +
       "title/body/project/requester/needs/priority/nextAction. Use ticket_upsert only if the dedupeKey/source identity must change.",
     "4. Always feed the gbrain. Treat every correction here as a durable signal: whenever the note or your " +
       "findings surface a project, an identity (who someone really is, aliases), ownership, a decision, a blocker, " +
-      "or a relationship that outlives this ticket, write it into the relevant gbrain note under " +
-      "/Users/loris.alexandre@dataiku.com/Documents/dataiku (create the note if none fits) and reindex the brain. " +
+      `or a relationship that outlives this ticket, write it into the relevant synthetic brain note under ${brainDir} ` +
+      "(create the note if none fits) and reindex the synthetic brain. " +
       "When in doubt, capture it — bias toward persisting. If you spot adjacent gbrain notes worth updating or " +
       "creating beyond this ticket, do so and say which.",
     "5. Stay idempotent: update this ticketId, never spawn a second ticket for the same thing.",
@@ -538,8 +520,9 @@ function buildEnrichPrompt(t: Ticket, note: string): string {
 
 /** First-turn prompt for a manually-created task: research it, then write its description in place. */
 function buildDescribePrompt(t: Ticket): string {
+  const brainDir = resolveBrainDir();
   const lines = [
-    `Loris just created a new task in Boucle and wants you to research it and write its description.`,
+    `Nora Bellier, Brumeline's chief of staff, just created a new task in Boucle and wants you to research it and write its description.`,
     "",
     "Task:",
     `- ticketId: ${t.ticketId}  (use this for ticket_get / ticket_set)`,
@@ -547,7 +530,7 @@ function buildDescribePrompt(t: Ticket): string {
     `- project: ${t.project ?? "— (figure out the right gbrain project slug if you can)"}`,
     "",
     "Do this:",
-    "1. Use the provided Boucle tools and synthetic fake-brain project pages to understand what this EPIC really is: " +
+    `1. Use the provided Boucle tools and Brumeline's synthetic project pages under ${brainDir} to understand what this EPIC really is: ` +
       "the goal, who's involved, current state, blockers, the right project, and a concrete next action.",
     "2. Call ticket_get(ticketId) for the latest, then ticket_set(ticketId, …) to fill in a clear `body` " +
       "(the description), `nextAction`, `project` (gbrain slug), and a `bucket` " +

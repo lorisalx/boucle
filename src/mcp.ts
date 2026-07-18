@@ -19,11 +19,11 @@ import type {
 import { executeBoucleTool } from "./boucle-tools.ts";
 import { spawnMistralChat } from "./mistral.ts";
 
-const SOURCES = ["slack", "gmail", "gcal", "clickup", "manual"] as const;
+const SOURCES = ["slack", "gmail", "gcal", "manual"] as const;
 const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
 const KINDS = ["task", "idea", "conv", "scope"] as const;
 const KIND_DESC =
-  "What the item IS: task = actionable; idea = something Loris wants to remember (not yet actionable); conv = pointer to an agent conversation; scope = a larger design to break down. Default task.";
+  "What the item IS: task = actionable; idea = something Nora Bellier wants to remember (not yet actionable); conv = pointer to an agent conversation; scope = a larger design to break down. Default task.";
 const BUCKETS = ["urgent", "to_do_next", "cool_to_do", "maybe_one_day"] as const;
 const NEEDS = ["claude", "codex", "human", "none"] as const;
 const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
@@ -89,7 +89,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         sourceRef: z.string().nullable().optional(),
         permalink: z.string().nullable().optional(),
         requester: z.string().nullable().optional().describe("person slug who asked, e.g. first-last."),
-        needs: z.enum(NEEDS).optional().describe("claude/codex for agent work, human for Loris-only, none for trivial."),
+        needs: z.enum(NEEDS).optional().describe("claude/codex for agent work, human for Nora-only, none for trivial."),
         effort: z.enum(EFFORTS).nullable().optional(),
         dueAt: z.string().nullable().optional().describe("ISO 8601."),
         nextAction: z.string().nullable().optional().describe("The single concrete next step."),
@@ -150,7 +150,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     "ticket_set",
     {
       title: "Set ticket fields",
-      description: "Edit mutable fields (priority/bucket/project/needs/effort/dueAt/nextAction/threadId/clickupTaskId/wantsClickup) and recompute score.",
+      description: "Edit mutable fields (priority/bucket/project/needs/effort/dueAt/nextAction/threadId) and recompute score.",
       inputSchema: {
         ticketId: z.string(),
         title: z.string().optional(),
@@ -164,8 +164,6 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         dueAt: z.string().nullable().optional(),
         nextAction: z.string().nullable().optional(),
         threadId: z.string().nullable().optional(),
-        wantsClickup: z.boolean().optional(),
-        clickupTaskId: z.string().nullable().optional(),
       },
     },
     async (args) => ok(executeBoucleTool(store, "ticket_set", args)),
@@ -176,18 +174,18 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     {
       title: "Transition ticket",
       description:
-        "Move a ticket to a new status (inbox/triaged/next/snoozed/blocked/in_progress/done/dropped). snoozedUntil only applies to 'snoozed'. Pass `reason` when closing (done/dropped) — it lands in the timeline so the queue records WHY it self-cleaned. Pass `workRef` to link the work that resolved it (e.g. the Claude convo that did it, a ClickUp/PR URL) so the ticket points back to it.",
+        "Move a ticket to a new status (inbox/triaged/next/snoozed/blocked/in_progress/done/dropped). snoozedUntil only applies to 'snoozed'. Pass `reason` when closing (done/dropped) — it lands in the timeline so the queue records WHY it self-cleaned. Pass `workRef` to link the work that resolved it (e.g. the agent conversation or a PR URL) so the ticket points back to it.",
       inputSchema: {
         ticketId: z.string(),
         toStatus: z.enum(STATUSES),
         snoozedUntil: z.string().nullable().optional().describe("ISO 8601; only for --to snoozed."),
-        reason: z.string().nullable().optional().describe("One line on why, e.g. \"Loris replied in-thread; ClickUp CU-123 created\". Recorded on the timeline."),
+        reason: z.string().nullable().optional().describe("One line on why, e.g. \"Nora replied in-thread; the draft was approved\". Recorded on the timeline."),
         workRef: z
           .string()
           .nullable()
           .optional()
           .describe(
-            "Pointer to the work that resolved this. If you (an agent) did the work, pass your own resumable convo reference verbatim (the SessionStart context gives it, e.g. \"claude --resume <id> (cwd: …)\"); or a ClickUp/PR URL.",
+            "Pointer to the work that resolved this. If you (an agent) did the work, pass your own resumable conversation reference verbatim; otherwise use a synthetic brain artifact or PR URL.",
           ),
       },
     },

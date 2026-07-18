@@ -5,21 +5,14 @@ import { api } from "./api.ts";
 import { navigate } from "./hooks.ts";
 import { Button, Status, ThemeToggle } from "./ui.tsx";
 
-const INPUT_CLASS =
-  "w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm text-fg outline-none placeholder:text-dim focus:border-focus";
-
 export function Settings() {
-  const [clickupToken, setClickupToken] = useState("");
   const [mistralConfigured, setMistralConfigured] = useState(false);
-  const [clickupConfigured, setClickupConfigured] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api.settings().then((s) => {
       setMistralConfigured(s.mistralConfigured);
-      setClickupConfigured(s.clickupConfigured);
     });
     api.mcpInfo().then(setMcp).catch(() => {});
   }, []);
@@ -29,20 +22,6 @@ export function Settings() {
     navigator.clipboard.writeText(mcp.configToml).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    });
-  };
-
-  const save = () => {
-    const patch: Record<string, string> = {};
-    if (clickupToken.trim().length > 0) patch.clickupToken = clickupToken.trim();
-    api.saveSettings(patch).then(() => {
-      setSaved(true);
-      setClickupToken("");
-      api.settings().then((s) => {
-        setMistralConfigured(s.mistralConfigured);
-        setClickupConfigured(s.clickupConfigured);
-      });
-      setTimeout(() => setSaved(false), 1500);
     });
   };
 
@@ -75,39 +54,6 @@ export function Settings() {
           </div>
         </div>
 
-        <Field
-          label="ClickUp API key"
-          hint={
-            clickupConfigured
-              ? "A key is saved. Leave blank to keep it, or paste a new one to replace. Create ClickUp task routes by project into the Projects - Loris lists."
-              : "Personal token (pk_…) from ClickUp → Settings → Apps. Create ClickUp task creates the task directly, routed by project."
-          }
-        >
-          <input
-            type="password"
-            value={clickupToken}
-            onChange={(e) => setClickupToken(e.target.value)}
-            placeholder={clickupConfigured ? "•••••••• (saved)" : "pk_…"}
-            spellCheck={false}
-            className={INPUT_CLASS}
-          />
-        </Field>
-
-        <div className="flex items-center gap-3">
-          <Button variant="primary" onClick={save}>
-            Save
-          </Button>
-          {saved ? <span className="text-xs text-success">Saved.</span> : null}
-          <span className="ml-auto flex items-center gap-3 text-xs">
-            <Status tone={mistralConfigured ? "success" : "neutral"}>
-              Mistral {mistralConfigured ? "ready" : "not configured"}
-            </Status>
-            <Status tone={clickupConfigured ? "success" : "neutral"}>
-              ClickUp {clickupConfigured ? "connected" : "not configured"}
-            </Status>
-          </span>
-        </div>
-
         <div className="border-t border-border pt-6">
           <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for Codex / Claude</h2>
           <p className="mb-3 text-xs text-muted">
@@ -134,23 +80,5 @@ export function Settings() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-fg">{label}</span>
-      <span className="text-xs text-muted">{hint}</span>
-      <div className="mt-1">{children}</div>
-    </label>
   );
 }
