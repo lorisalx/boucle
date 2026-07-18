@@ -1,0 +1,50 @@
+[
+  {
+    "file": "vo/01-one-project.mp3",
+    "from": 8
+  },
+  {
+    "file": "vo/02-more.mp3",
+    "from": 150
+  },
+  {
+    "file": "vo/03-pings.mp3",
+    "from": 332
+  },
+  {
+    "file": "vo/04-collapse.mp3",
+    "from": 518
+  },
+  {
+    "file": "vo/05-title.mp3",
+    "from": 648
+  },
+  {
+    "file": "vo/06-queue.mp3",
+    "from": 754
+  },
+  {
+    "file": "vo/07-capture.mp3",
+    "from": 852
+  },
+  {
+    "file": "vo/08-palette.mp3",
+    "from": 950
+  },
+  {
+    "file": "vo/09-brain.mp3",
+    "from": 1048
+  },
+  {
+    "file": "vo/10-loops.mp3",
+    "from": 1146
+  },
+  {
+    "file": "vo/11-projects.mp3",
+    "from": 1244
+  },
+  {
+    "file": "vo/12-outro.mp3",
+    "from": 1348
+  }
+]
