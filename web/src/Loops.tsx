@@ -16,13 +16,8 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 /** Friendly label + tone for the model a loop runs on. */
 function modelBadge(model: string | null): { label: string; tone: Tone } {
-  if (!model) return { label: "codex default", tone: "neutral" };
-  if (model.startsWith("claude-")) {
-    // "claude-sonnet-5" → "Sonnet 5"
-    const rest = model.replace(/^claude-/, "").replace(/-/g, " ");
-    return { label: rest.replace(/\b\w/g, (c) => c.toUpperCase()), tone: "info" };
-  }
-  if (model.startsWith("gpt-")) return { label: model.toUpperCase(), tone: "success" };
+  if (!model) return { label: "devstral-2512", tone: "neutral" };
+  if (model.startsWith("devstral")) return { label: model, tone: "success" };
   return { label: model, tone: "neutral" };
 }
 
@@ -56,7 +51,7 @@ function OpenConversationButton({ loop }: { loop: { threadOpenUrl?: string | nul
       target="_blank"
       rel="noreferrer"
       className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-fg transition-colors hover:border-border-hover hover:bg-surface"
-      title="Open this loop's persistent t3code conversation"
+      title="Open this loop's legacy conversation"
     >
       <MessageSquareIcon className="size-3.5" /> Open convo <ArrowUpRightIcon className="size-3" />
     </a>
@@ -82,6 +77,8 @@ export function Loops() {
   };
 
   const act = (p: Promise<unknown>) => p.then(refresh).catch((e) => alert(String(e.message ?? e)));
+  const cumulativeCostUsd = loops[0]?.cumulativeCostUsd ?? 0;
+  const budgetWarning = loops[0]?.budgetWarning ?? null;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -113,6 +110,17 @@ export function Loops() {
         <p className="mb-4 flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
           <span className="inline-flex size-[7px] shrink-0 rounded-full bg-amber-500" />
           The scheduler is paused — enabled loops won&apos;t run until you flip it on.
+        </p>
+      ) : null}
+
+      <div className="mb-4 flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs">
+        <span className="text-muted">Recorded Vibe spend</span>
+        <span className="font-mono font-medium text-fg">${cumulativeCostUsd.toFixed(4)}</span>
+      </div>
+
+      {budgetWarning ? (
+        <p className="mb-4 rounded-md border border-amber-500/40 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+          {budgetWarning}
         </p>
       ) : null}
 
@@ -204,9 +212,9 @@ const NEW_DRAFT: LoopInput = {
   activeStartHour: 8,
   activeEndHour: 18,
   timezone: "Europe/Paris",
-  codexHome: "~/.codex-dataiku",
-  profile: "codex-dataiku",
-  model: null,
+  profile: null,
+  codexHome: null,
+  model: "devstral-2512",
 };
 
 export function LoopDetail({ loopId }: { loopId: string }) {
@@ -268,11 +276,11 @@ export function LoopDetail({ loopId }: { loopId: string }) {
         </div>
       </div>
       <h1 className="mb-6 text-xl font-semibold tracking-tight text-fg">{isNew ? "New loop" : draft.name}</h1>
-      {!isNew && draft.threadOpenUrl ? (
+      {!isNew && draft.threadId ? (
         <div className="mb-5 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
           <MessageSquareIcon className="size-4 text-dim" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-fg">Loop conversation</p>
+            <p className="text-sm font-medium text-fg">Vibe session</p>
             <p className="truncate font-mono text-xs text-dim">
               {draft.threadProject ? `${draft.threadProject} · ` : ""}{draft.threadId}
             </p>
@@ -288,7 +296,7 @@ export function LoopDetail({ loopId }: { loopId: string }) {
         <Field label="Description" hint="Shown in the loop list.">
           <Text value={draft.description ?? ""} onChange={(v) => set("description", v)} />
         </Field>
-        <Field label="Prompt" hint="The full instructions handed to `codex exec`.">
+        <Field label="Prompt" hint="The full instructions handed to Vibe CLI.">
           <textarea
             value={draft.prompt}
             onChange={(e) => set("prompt", e.target.value)}
@@ -300,7 +308,7 @@ export function LoopDetail({ loopId }: { loopId: string }) {
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Interval (minutes)">
-            <Num value={draft.intervalMinutes ?? 60} onChange={(v) => set("intervalMinutes", v)} min={1} />
+            <Num value={draft.intervalMinutes ?? 60} onChange={(v) => set("intervalMinutes", v)} min={60} />
           </Field>
           <Field label="Timezone">
             <Text value={draft.timezone ?? "Europe/Paris"} onChange={(v) => set("timezone", v)} />
@@ -335,17 +343,8 @@ export function LoopDetail({ loopId }: { loopId: string }) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Codex profile" hint="`codex --profile`. Blank to omit.">
-            <Text value={draft.profile ?? ""} onChange={(v) => set("profile", v || null)} />
-          </Field>
-          <Field label="CODEX_HOME" hint="Profile dir for the spawn. Blank inherits.">
-            <Text value={draft.codexHome ?? ""} onChange={(v) => set("codexHome", v || null)} />
-          </Field>
-        </div>
-
-        <Field label="Model" hint="`codex -m`. Blank uses the profile default.">
-          <Text value={draft.model ?? ""} onChange={(v) => set("model", v || null)} />
+        <Field label="Model" hint="Vibe active model. Blank defaults to devstral-2512.">
+          <Text value={draft.model ?? ""} onChange={(v) => set("model", v || "devstral-2512")} />
         </Field>
 
         <label className="flex items-center gap-2 text-sm text-fg">
@@ -382,6 +381,8 @@ export function LoopDetail({ loopId }: { loopId: string }) {
                     <span>{formatWhen(r.startedAt)}</span>
                     <span>· {r.trigger}</span>
                     {r.exitCode !== null ? <span>· exit {r.exitCode}</span> : null}
+                    {r.costUsd !== null ? <span>· ${r.costUsd.toFixed(4)}</span> : null}
+                    {r.sessionId ? <span title={r.sessionId}>· session {r.sessionId.slice(0, 8)}</span> : null}
                   </div>
                   {r.summary ? (
                     <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted">

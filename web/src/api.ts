@@ -137,6 +137,9 @@ export interface Loop {
   createdAt: string;
   updatedAt: string;
   isRunning?: boolean;
+  cumulativeCostUsd?: number;
+  budgetWarning?: string | null;
+  budgetBlocked?: boolean;
 }
 
 export interface LoopRun {
@@ -148,6 +151,8 @@ export interface LoopRun {
   exitCode: number | null;
   summary: string;
   trigger: "schedule" | "manual";
+  costUsd: number | null;
+  sessionId: string | null;
 }
 
 export type LoopInput = Partial<Omit<Loop, "loopId" | "lastRunAt" | "lastStatus" | "createdAt" | "updatedAt" | "isRunning">> & {

@@ -229,15 +229,26 @@ app.post("/api/loop-state", async (c) => {
   return c.json({ enabled: body.enabled });
 });
 
-// Loops — BOUCLE owns N scheduled codex runs.
-const withRunState = (loop: ReturnType<typeof store.getLoop>) =>
-  loop ? { ...loop, isRunning: scheduler.isRunning(loop.loopId) } : loop;
+// Loops — BOUCLE owns N scheduled Vibe runs.
+const withRunState = (loop: ReturnType<typeof store.getLoop>, includeBudget = true) => {
+  if (!loop) return loop;
+  if (!includeBudget) return { ...loop, isRunning: scheduler.isRunning(loop.loopId) };
+  const budget = store.getLoopCostSummary();
+  return {
+    ...loop,
+    isRunning: scheduler.isRunning(loop.loopId),
+    cumulativeCostUsd: budget.totalCostUsd,
+    budgetWarning: budget.warning,
+    budgetBlocked: budget.blocked,
+  };
+};
 
-app.get("/api/loops", (c) => c.json(store.listLoops().map((l) => ({ ...l, isRunning: scheduler.isRunning(l.loopId) }))));
+app.get("/api/loops", (c) => c.json(store.listLoops().map((loop) => withRunState(loop))));
 
 app.post("/api/loops", async (c) => {
   const body = (await c.req.json()) as CreateLoopInput;
-  return c.json(withRunState(store.createLoop(body)));
+  // Keep the Phase 1 create response contract unchanged.
+  return c.json(withRunState(store.createLoop(body), false));
 });
 
 app.get("/api/loops/:id", (c) => {
@@ -267,7 +278,8 @@ app.post("/api/loops/:id/run", (c) => {
     if (run === null) return c.json({ error: "loop is already running" }, 409);
     return c.json(run);
   } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 404);
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, message.includes("budget") ? 402 : 404);
   }
 });
 
@@ -430,7 +442,7 @@ app.post("/api/tickets/:id/clickup", async (c) => {
 });
 
 // Smart capture — paste raw text (a Slack message, meeting notes…); a one-shot
-// codex run splits it into typed items, routes them to projects, and merges with
+// Vibe run splits it into typed items, routes them to projects, and merges with
 // existing open tickets instead of duplicating. Async: poll GET /api/capture/smart.
 app.post("/api/capture/smart", async (c) => {
   const body = (await c.req.json()) as { text: string; project?: string | null };
@@ -484,11 +496,11 @@ app.post("/api/tickets/:id/enrich", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { note?: string };
   const note = (body.note ?? "").trim();
   const started = scheduler.enrichTicket(ticket.ticketId, buildEnrichPrompt(ticket, note));
-  if (!started) return c.json({ error: "a codex re-run is already in progress for this ticket" }, 409);
+  if (!started) return c.json({ error: "a Vibe re-run is already in progress for this ticket" }, 409);
   return c.json({ ok: true }, 202);
 });
 
-/** Prompt for a one-shot codex run that re-investigates a ticket with a human correction note. */
+/** Prompt for a one-shot Vibe run that re-investigates a ticket with a human correction note. */
 function buildEnrichPrompt(t: Ticket, note: string): string {
   const lines = [
     "Loris reviewed this captured ticket in Boucle and added a correction/context note.",

@@ -174,7 +174,7 @@ export interface ProjectMeta {
 }
 
 // ===============================
-// Loops — scheduled codex runs that BOUCLE owns
+// Loops — scheduled Vibe runs that BOUCLE owns
 // ===============================
 
 export type LoopRunStatus = "running" | "ok" | "error" | "timeout";
@@ -184,7 +184,7 @@ export interface Loop {
   loopId: string;
   name: string;
   description: string;
-  /** The full instructions handed to `codex exec` as the prompt. */
+  /** The full instructions handed to Vibe CLI as the prompt. */
   prompt: string;
   enabled: boolean;
   /** Minimum minutes between runs. */
@@ -202,7 +202,7 @@ export interface Loop {
   profile: string | null;
   /** `codex -m <model>`; null uses the profile default. */
   model: string | null;
-  /** Persistent t3code thread used for this loop's scheduled/manual runs. */
+  /** Persistent Vibe session used for this loop's scheduled/manual runs. */
   threadId: string | null;
   threadProject: string | null;
   threadOpenUrl: string | null;
@@ -221,6 +221,14 @@ export interface LoopRun {
   exitCode: number | null;
   summary: string;
   trigger: LoopRunTrigger;
+  costUsd: number | null;
+  sessionId: string | null;
+}
+
+export interface LoopCostSummary {
+  totalCostUsd: number;
+  warning: string | null;
+  blocked: boolean;
 }
 
 export interface CreateLoopInput {
@@ -647,7 +655,7 @@ export class BoucleStore {
       CREATE TABLE IF NOT EXISTS loop_runs (
         run_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
         status TEXT NOT NULL, exit_code INTEGER, summary TEXT NOT NULL DEFAULT '',
-        trigger TEXT NOT NULL DEFAULT 'schedule'
+        trigger TEXT NOT NULL DEFAULT 'schedule', cost_usd REAL, session_id TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_loop_runs_loop ON loop_runs(loop_id, started_at DESC);
       CREATE TABLE IF NOT EXISTS project_meta (
@@ -691,6 +699,24 @@ export class BoucleStore {
     if (!loopCols.some((c) => c.name === "thread_open_url")) {
       this.db.exec(`ALTER TABLE loops ADD COLUMN thread_open_url TEXT`);
     }
+    const runCols = this.db.prepare(`PRAGMA table_info(loop_runs)`).all() as Array<{ name: string }>;
+    if (!runCols.some((c) => c.name === "cost_usd")) {
+      this.db.exec(`ALTER TABLE loop_runs ADD COLUMN cost_usd REAL`);
+    }
+    if (!runCols.some((c) => c.name === "session_id")) {
+      this.db.exec(`ALTER TABLE loop_runs ADD COLUMN session_id TEXT`);
+    }
+    // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
+    this.db.exec(`
+      UPDATE loops SET model = 'devstral-2512'
+      WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
+        AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
+      UPDATE loops SET interval_minutes = 60
+      WHERE name = 'Meetings' AND interval_minutes < 60;
+      UPDATE loops
+      SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
+      WHERE thread_id IS NOT NULL AND COALESCE(thread_project, '') != 'vibe';
+    `);
   }
 
   /** Insert the default loops, so a fresh install has working loops. Idempotent per loop name. */
@@ -716,15 +742,15 @@ export class BoucleStore {
       description: "Summarize synthetic meeting transcripts and file Nora's action items as tickets.",
       prompt: DEFAULT_MEETINGS_PROMPT,
       enabled: false,
-      // Frequent, weekdays only (no meetings on weekends), any hour a transcript lands.
-      intervalMinutes: 15,
+      // Weekdays only (no meetings on weekends), any hour a transcript lands.
+      intervalMinutes: 60,
       activeDays: "Mon,Tue,Wed,Thu,Fri",
       activeStartHour: 0,
       activeEndHour: 0,
       timezone: "Europe/Paris",
       codexHome: null,
       profile: null,
-      model: "claude-sonnet-5",
+      model: "devstral-2512",
     }));
     this.ensureLoopByName("Project timelines", () => ({
       name: "Project timelines",
@@ -739,7 +765,7 @@ export class BoucleStore {
       timezone: "Europe/Paris",
       codexHome: null,
       profile: null,
-      model: "claude-sonnet-5",
+      model: "devstral-2512",
     }));
   }
 
@@ -1073,14 +1099,14 @@ export class BoucleStore {
       description: input.description ?? "",
       prompt: input.prompt,
       enabled: input.enabled ?? false,
-      intervalMinutes: input.intervalMinutes ?? 60,
+      intervalMinutes: Math.max(60, input.intervalMinutes ?? 60),
       activeDays: input.activeDays ?? "",
       activeStartHour: input.activeStartHour ?? 0,
       activeEndHour: input.activeEndHour ?? 0,
       timezone: input.timezone ?? "Europe/Paris",
       codexHome: input.codexHome ?? null,
       profile: input.profile ?? null,
-      model: input.model ?? null,
+      model: input.model ?? "devstral-2512",
       threadId: null,
       threadProject: null,
       threadOpenUrl: null,
@@ -1112,7 +1138,7 @@ export class BoucleStore {
       description: input.description ?? prev.description,
       prompt: input.prompt ?? prev.prompt,
       enabled: input.enabled ?? prev.enabled,
-      intervalMinutes: input.intervalMinutes ?? prev.intervalMinutes,
+      intervalMinutes: input.intervalMinutes === undefined ? prev.intervalMinutes : Math.max(60, input.intervalMinutes),
       activeDays: input.activeDays ?? prev.activeDays,
       activeStartHour: input.activeStartHour ?? prev.activeStartHour,
       activeEndHour: input.activeEndHour ?? prev.activeEndHour,
@@ -1182,12 +1208,14 @@ export class BoucleStore {
       exitCode: null,
       summary: "",
       trigger,
+      costUsd: null,
+      sessionId: null,
     };
     this.db
       .prepare(
-        `INSERT INTO loop_runs (run_id,loop_id,started_at,finished_at,status,exit_code,summary,trigger) VALUES (?,?,?,?,?,?,?,?)`,
+        `INSERT INTO loop_runs (run_id,loop_id,started_at,finished_at,status,exit_code,summary,trigger,cost_usd,session_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
       )
-      .run(run.runId, run.loopId, run.startedAt, null, run.status, null, "", run.trigger);
+      .run(run.runId, run.loopId, run.startedAt, null, run.status, null, "", run.trigger, null, null);
     this.db
       .prepare(`UPDATE loops SET last_run_at = ?, last_status = 'running' WHERE loop_id = ?`)
       .run(run.startedAt, loopId);
@@ -1201,11 +1229,13 @@ export class BoucleStore {
     status: LoopRunStatus,
     exitCode: number | null,
     summary: string,
+    costUsd: number | null,
+    sessionId: string | null,
   ): void {
     const finishedAt = new Date().toISOString();
     this.db
-      .prepare(`UPDATE loop_runs SET finished_at = ?, status = ?, exit_code = ?, summary = ? WHERE run_id = ?`)
-      .run(finishedAt, status, exitCode, summary, runId);
+      .prepare(`UPDATE loop_runs SET finished_at = ?, status = ?, exit_code = ?, summary = ?, cost_usd = ?, session_id = ? WHERE run_id = ?`)
+      .run(finishedAt, status, exitCode, summary, costUsd, sessionId, runId);
     this.db.prepare(`UPDATE loops SET last_status = ? WHERE loop_id = ?`).run(status, loopId);
   }
 
@@ -1213,11 +1243,26 @@ export class BoucleStore {
     const rows = this.db
       .prepare(
         `SELECT run_id AS runId, loop_id AS loopId, started_at AS startedAt, finished_at AS finishedAt,
-                status, exit_code AS exitCode, summary, trigger
+                status, exit_code AS exitCode, summary, trigger,
+                cost_usd AS costUsd, session_id AS sessionId
          FROM loop_runs WHERE loop_id = ? ORDER BY started_at DESC LIMIT ?`,
       )
       .all(loopId, limit) as unknown as LoopRun[];
     return rows;
+  }
+
+  getLoopCostSummary(): LoopCostSummary {
+    const row = this.db.prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs`).get() as { total: number };
+    const totalCostUsd = row.total;
+    return {
+      totalCostUsd,
+      warning: totalCostUsd >= 10
+        ? totalCostUsd >= 30
+          ? `Vibe loop budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $30.00).`
+          : `Vibe loop spend has crossed the $10 warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
+        : null,
+      blocked: totalCostUsd >= 30,
+    };
   }
 
   // ===============================
