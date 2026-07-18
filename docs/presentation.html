@@ -88,6 +88,19 @@
   #boomCap .cap{margin:0 auto;background:rgba(250,249,247,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
     padding:18px 30px;border-radius:18px;border:1px solid var(--line);box-shadow:0 12px 36px rgba(25,24,23,.08);width:max-content;max-width:86vw}
 
+  /* scene 4b: live survey results */
+  #statRow{display:grid;grid-template-columns:repeat(4,minmax(150px,215px));gap:16px;margin:30px 0 6px}
+  @media (max-width:900px){#statRow{grid-template-columns:1fr 1fr}}
+  .stat{padding:22px 16px;text-align:center}
+  .stat b{display:block;font-size:clamp(30px,4.2vw,50px);font-family:var(--mono);color:var(--accent);letter-spacing:-.02em}
+  .stat span{font-size:12.5px;color:#57534e;line-height:1.4;display:block;margin-top:7px}
+  .svq{margin:26px auto 0;max-width:660px;min-height:74px;background:#fff;border-left:4px solid var(--accent2);
+    border-radius:0 14px 14px 0;padding:15px 22px;font-size:16.5px;text-align:left;
+    box-shadow:0 10px 30px rgba(25,24,23,.07);transition:opacity .3s}
+  .svq small{display:block;color:var(--muted);margin-top:6px;font-size:12.5px}
+  .svlive{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:14px}
+  .svlive i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-right:6px;animation:blink 1.4s steps(1) infinite}
+
   /* scene 5: contain + organize */
   #brainWrap{position:relative;width:min(860px,92vw);height:min(500px,60vh)}
   #brainBox{position:absolute;inset:0;border-radius:20px}
@@ -290,6 +303,20 @@
   <div id="boomStage"></div>
   <div id="boomCap"><p class="cap" data-at="1"><b>Your agents scaled. Your head did not.</b><br>You are now the PM, and the only shared memory, of your own agent fleet.</p></div>
   <div id="boomCount"><b id="nConv">1</b> live conversations · <b>6</b> projects · <b>1</b> human</div>
+</section>
+
+<!-- 4b · live survey results -->
+<section class="scene" id="s4b" data-steps="2">
+  <div class="kicker">we asked the room tonight</div>
+  <h2 id="svTitle">It's not just us.</h2>
+  <div id="statRow" data-at="1">
+    <div class="card stat"><b id="stN">–</b><span>people interviewed at this hackathon</span></div>
+    <div class="card stat"><b id="stLose">–</b><span>lose track of what their threads did, weekly or daily</span></div>
+    <div class="card stat"><b id="stRe">–</b><span>re-explain the same context to every new session</span></div>
+    <div class="card stat"><b id="stWant">–</b><span>want one screen + memory shared across sessions</span></div>
+  </div>
+  <blockquote class="svq" id="svQuote" data-at="2">“…”<small></small></blockquote>
+  <div class="svlive" data-at="1"><i></i>live data · collected here, tonight</div>
 </section>
 
 <!-- 5 · contain + organize -->
@@ -513,8 +540,10 @@ function apply(){
   s.querySelectorAll('[data-at]').forEach(el=>el.classList.toggle('on',+el.dataset.at<=step));
   (onStep[s.id]||(()=>{}))(step);
 }
+var svTimer=null;
 function go(i,atStep=0){
   clearTimers();
+  if(svTimer){clearInterval(svTimer);svTimer=null}
   scenes.forEach((s,j)=>s.classList.toggle('active',j===i));
   cur=i;step=atStep;paintDots();
   (onEnter[scenes[i].id]||(()=>{}))();
@@ -589,6 +618,43 @@ onEnter.s4=()=>{
       n.textContent=(++count);
     }, 250+i*95);
   }
+};
+
+/* s4b: live survey results */
+const SURVEY_DATA='http://100.113.29.2:3787/data';
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+function countTo(id,val,suffix){
+  const el=document.getElementById(id);
+  if(val==null){el.textContent='–';return}
+  let cur=0;const steps=Math.max(1,Math.min(30,val));
+  const tick=()=>{cur=Math.min(val,cur+Math.ceil(val/steps));
+    el.textContent=cur+(suffix||'');
+    if(cur<val)timers.push(setTimeout(tick,40))};
+  tick();
+}
+onEnter.s4b=async()=>{
+  let rows=[];
+  try{
+    const txt=await(await fetch(SURVEY_DATA,{cache:'no-store'})).text();
+    rows=txt.trim()?txt.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
+  }catch(e){}
+  const n=rows.length;
+  const pct=f=>n?Math.round(rows.filter(f).length/n*100):null;
+  countTo('stN',n||null);
+  countTo('stLose',pct(r=>['Weekly','Daily'].includes(r.losetrack)),'%');
+  countTo('stRe',pct(r=>['Often','Every single time'].includes(r.reexplain)),'%');
+  countTo('stWant',pct(r=>['Yes','Shut up and take my money'].includes(r.want)),'%');
+  const quotes=rows.filter(r=>r.pain&&r.pain.length>3);
+  const qEl=document.getElementById('svQuote');
+  let qi=0;
+  const showQ=()=>{
+    if(!quotes.length){qEl.innerHTML='“Survey running on the floor right now: come back in an hour.”<small>the room</small>';return}
+    const r=quotes[qi++%quotes.length];
+    qEl.style.opacity=0;
+    setTimeout(()=>{qEl.innerHTML='“'+esc(r.pain)+'”<small>'+esc(r.who||'hackathon attendee')+'</small>';qEl.style.opacity=1},280);
+  };
+  showQ();
+  if(quotes.length>1)svTimer=setInterval(showQ,3800);
 };
 
 /* s5: contain + organize */
