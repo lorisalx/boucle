@@ -19,6 +19,7 @@ import type {
 import { executeBoucleTool } from "./boucle-tools.ts";
 import { spawnChat } from "./chat.ts";
 import { getIdentity, type Identity } from "./identity.ts";
+import { isValidProjectId } from "./projects.ts";
 
 const SOURCES = ["slack", "gmail", "gcal", "manual"] as const;
 const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
@@ -33,11 +34,19 @@ const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
 const STATUSES = ["inbox", "triaged", "next", "snoozed", "blocked", "in_progress", "done", "dropped"] as const;
 const DECISIONS = ["ticketed", "ignored", "merged"] as const;
 
-type ToolResult = { content: Array<{ type: "text"; text: string }> };
+type ToolResult = { content: Array<{ type: "text"; text: string }>; isError?: boolean };
 
 function ok(value: unknown): ToolResult {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return { content: [{ type: "text", text }] };
+}
+
+function invalidProject(project: string | null | undefined): ToolResult | null {
+  if (typeof project !== "string" || isValidProjectId(project)) return null;
+  return {
+    content: [{ type: "text", text: JSON.stringify({ error: "project must be a valid project slug" }) }],
+    isError: true,
+  };
 }
 
 /** Stable bearer token for the HTTP transport. Env override, else generated once into boucle_meta. */
@@ -71,7 +80,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     "brain_search",
     {
       title: "Search the brain",
-      description: "Search tickets, ticket history, meetings, and synthetic project pages before deduping or merging work.",
+      description: `Search tickets, ticket history, meetings, and ${identity.demoMode ? "synthetic " : ""}brain project pages before deduping or merging work.`,
       inputSchema: { query: z.string(), limit: z.number().int().min(1).max(20).optional() },
       annotations: { readOnlyHint: true },
     },
@@ -142,7 +151,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
       },
       annotations: { idempotentHint: true },
     },
-    async (args) => ok(store.upsert(args as UpsertTicketInput)),
+    async (args) => invalidProject(args.project) ?? ok(store.upsert(args as UpsertTicketInput)),
   );
 
   server.registerTool(
@@ -205,7 +214,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         threadId: z.string().nullable().optional(),
       },
     },
-    async (args) => ok(await executeBoucleTool(store, "ticket_set", args)),
+    async (args) => invalidProject(args.project) ?? ok(await executeBoucleTool(store, "ticket_set", args)),
   );
 
   server.registerTool(
@@ -224,7 +233,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
           .nullable()
           .optional()
           .describe(
-            "Pointer to the work that resolved this. If you (an agent) did the work, pass your own resumable conversation reference verbatim; otherwise use a synthetic brain artifact or PR URL.",
+            `Pointer to the work that resolved this. If you (an agent) did the work, pass your own resumable conversation reference verbatim; otherwise use ${identity.demoMode ? "a synthetic brain artifact" : "a brain artifact"} or PR URL.`,
           ),
       },
     },
@@ -245,7 +254,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     "project_page_read",
     {
       title: "Read project page",
-      description: "Read the synthetic brain page and timeline for a project slug.",
+      description: `Read the ${identity.demoMode ? "synthetic " : ""}brain page and timeline for a project slug.`,
       inputSchema: { projectId: z.string() },
       annotations: { readOnlyHint: true },
     },

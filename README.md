@@ -4,7 +4,7 @@ Boucle is a self-hosted chief-of-staff loop. It turns captures into tickets, run
 
 The workflow is capture → tickets → loops → brain. SQLite stores tickets, conversations, schedules, and cost records. Markdown files remain the source of truth for project and meeting context.
 
-> [Screenshot placeholder](docs/screenshot.png). Replace it when the neutral product tour is ready.
+> [Screenshot placeholder](docs/screenshots/tour/). Replace it when the neutral product tour is ready.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Mistral is the default. Agent loops use Vibe CLI in both provider modes.
 
 ## Quickstart
 
-Use Node 24 or later and pnpm. The bundled demo needs one Mistral API key.
+Use Node 23.6 or later (24 LTS recommended) and pnpm. The bundled demo needs one Mistral API key.
 
 ```sh
 git clone https://github.com/lorisalx/boucle.git

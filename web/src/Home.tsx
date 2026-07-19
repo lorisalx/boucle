@@ -305,7 +305,7 @@ function ProjectCard({
   canUp,
   canDown,
   onMove,
-  synthetic,
+  placeholder,
 }: {
   title: string;
   projectId: string | null;
@@ -317,7 +317,7 @@ function ProjectCard({
   canUp?: boolean;
   canDown?: boolean;
   onMove?: (dir: -1 | 1) => void;
-  synthetic?: boolean;
+  placeholder?: boolean;
 }) {
   const [showDormant, setShowDormant] = useState(false);
   const active = useMemo(() => items.filter((t) => !isDormant(t)).sort(byBucket), [items]);
@@ -329,12 +329,12 @@ function ProjectCard({
   };
 
   return (
-    <div className={cx("group flex flex-col rounded-lg border bg-surface p-4", synthetic ? "border-dashed border-border" : "border-border")}>
+    <div className={cx("group flex flex-col rounded-lg border bg-surface p-4", placeholder ? "border-dashed border-border" : "border-border")}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => (synthetic ? openCapture() : navigate("#/projects"))}
+              onClick={() => (placeholder ? openCapture() : navigate("#/projects"))}
               className="block max-w-full truncate text-left text-sm font-semibold text-fg hover:underline"
               title={title}
             >
@@ -344,7 +344,7 @@ function ProjectCard({
               className="ml-auto shrink-0 rounded-md border border-border px-1.5 py-0.5 font-mono text-[10px] text-dim"
               title="Active items in this project"
             >
-              {synthetic ? "private" : `${active.length} active`}
+              {placeholder ? "private" : `${active.length} active`}
             </span>
           </div>
           {status ? (
@@ -711,7 +711,7 @@ export function Home() {
             items={visible(misc)}
             actions={actions}
             refresh={refreshAll}
-            synthetic
+            placeholder
           />
         ) : null}
       </div>

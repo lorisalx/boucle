@@ -9,6 +9,8 @@ const IDENTITY_FALLBACK: Settings = {
   demoMode: false,
   providerName: "",
   providerConfigured: false,
+  budgetWarnUsd: 10,
+  budgetStopUsd: 30,
 };
 
 let identityCache: Settings | null = null;

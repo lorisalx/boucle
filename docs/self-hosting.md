@@ -4,7 +4,7 @@ Boucle runs as one Node process and serves the built web application. SQLite sto
 
 ## Prerequisites
 
-- Node.js 24 or later
+- Node.js 23.6 or later (24 LTS recommended)
 - pnpm
 - Git
 - About 1 vCPU for a small instance

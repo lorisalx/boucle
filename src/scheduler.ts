@@ -18,6 +18,10 @@ function budgetThreshold(name: string, fallback: number): number {
 const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
 const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
 
+export function getAgentBudgetThresholds(): { warnUsd: number; stopUsd: number } {
+  return { warnUsd: BUDGET_WARN, stopUsd: BUDGET_STOP };
+}
+
 /** Whether `nowMs` falls inside the loop's active day/hour window (in its timezone). */
 export function isWithinWindow(loop: Loop, nowMs: number): boolean {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -293,14 +297,14 @@ export class LoopScheduler {
     spec: VibeExecSpec,
     trigger: "smart_capture" | "enrich" | "vibe_thread",
   ): Promise<VibeExecResult> {
-    const syntheticLoopId = `vibe:${trigger}`;
-    const run = this.store.recordRunStart(syntheticLoopId, trigger);
+    const auxiliaryLoopId = `vibe:${trigger}`;
+    const run = this.store.recordRunStart(auxiliaryLoopId, trigger);
     return this.execVibe(spec)
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
         this.store.recordRunFinish(
           run.runId,
-          syntheticLoopId,
+          auxiliaryLoopId,
           status,
           res.code,
           res.output.slice(-MAX_SUMMARY_CHARS),
@@ -318,7 +322,7 @@ export class LoopScheduler {
         const detail = err instanceof Error ? err.message : String(err);
         this.store.recordRunFinish(
           run.runId,
-          syntheticLoopId,
+          auxiliaryLoopId,
           "error",
           null,
           detail.slice(-MAX_SUMMARY_CHARS),

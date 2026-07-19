@@ -15,8 +15,6 @@ import { openCapture } from "./Capture.tsx";
 import { navigate, useHashRoute, useIdentity } from "./hooks.ts";
 import { Mark, ThemeToggle, cx } from "./ui.tsx";
 
-const BUDGET_CAP_USD = 30;
-
 const NAV = [
   { hash: "#/", label: "Queue", icon: ListIcon },
   { hash: "#/brain", label: "Brain", icon: BrainIcon },
@@ -38,7 +36,7 @@ function activeHash(hash: string): string {
 }
 
 /** Cumulative vibe spend, refreshed once a minute. The ramp appears here and only here. */
-function BudgetMeter() {
+function BudgetMeter({ warnUsd, stopUsd }: { warnUsd: number; stopUsd: number }) {
   const [spend, setSpend] = useState<number | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
@@ -63,19 +61,20 @@ function BudgetMeter() {
   }, []);
 
   if (spend === null) return null;
+  const thresholdTitle = `Warning at $${warnUsd.toFixed(2)}; hard stop at $${stopUsd.toFixed(2)}.`;
   return (
-    <div className="rounded-lg border border-border bg-surface px-2.5 py-2" title={warning ?? undefined}>
+    <div className="rounded-lg border border-border bg-surface px-2.5 py-2" title={warning ?? thresholdTitle}>
       <div className="mb-1.5 flex items-baseline justify-between text-[11px]">
         <span className="text-muted">Agent budget</span>
         <span className="font-mono font-medium tabular-nums text-fg">
-          ${spend.toFixed(2)} / ${BUDGET_CAP_USD}
+          ${spend.toFixed(2)} / ${stopUsd.toFixed(2)}
         </span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-border">
         <div
           className="h-full rounded-full"
           style={{
-            width: `${Math.min(100, (spend / BUDGET_CAP_USD) * 100)}%`,
+            width: `${stopUsd === 0 ? 100 : Math.min(100, (spend / stopUsd) * 100)}%`,
             minWidth: spend > 0 ? "4px" : 0,
             background: "var(--ramp)",
           }}
@@ -149,7 +148,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
-          <BudgetMeter />
+          <BudgetMeter warnUsd={identity.budgetWarnUsd} stopUsd={identity.budgetStopUsd} />
           <div className="flex items-center gap-2 px-1.5 py-1">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-[10px] font-bold text-fg">
               {initials(identity.ownerName)}

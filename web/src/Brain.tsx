@@ -173,7 +173,7 @@ export function Brain() {
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
           <div>
             <h1 className="text-sm font-semibold text-fg">Talk to your brain</h1>
-            <p className="text-[11px] text-muted">Projects, meetings, tickets, and synthetic brain notes in one read-only thread.</p>
+            <p className="text-[11px] text-muted">Projects, meetings, tickets, and brain notes in one read-only thread.</p>
           </div>
           <Button variant="ghost" onClick={startNewThread} className="text-xs">
             <RefreshCcwIcon className="size-3.5" />

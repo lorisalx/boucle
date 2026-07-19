@@ -1,5 +1,6 @@
 import { graphSearch } from "./graph.ts";
-import { getProjectPage } from "./projects.ts";
+import type { Identity } from "./identity.ts";
+import { getProjectPage, isValidProjectId } from "./projects.ts";
 import type { ToolSpec } from "./providers/types.ts";
 import type { BoucleStore, ListTicketsFilter, SetTicketFieldsInput, TicketStatus } from "./store.ts";
 
@@ -13,20 +14,21 @@ const NEEDS = ["claude", "codex", "human", "none"] as const;
 const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
 
 /** Store-backed tools safe to expose to a provider conversation. */
-export const BOUCLE_TOOLS: readonly ToolSpec[] = [
-  {
-    type: "function",
-    function: {
-      name: "brain_search",
-      description: "Search tickets, ticket history, meeting notes, and synthetic brain project pages before creating or merging work.",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } },
-        required: ["query"],
-        additionalProperties: false,
+export function buildBoucleTools(identity: Identity): readonly ToolSpec[] {
+  return [
+    {
+      type: "function",
+      function: {
+        name: "brain_search",
+        description: `Search tickets, ticket history, meeting notes, and ${identity.demoMode ? "synthetic " : ""}brain project pages before creating or merging work.`,
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } },
+          required: ["query"],
+          additionalProperties: false,
+        },
       },
     },
-  },
   {
     type: "function",
     function: {
@@ -139,7 +141,7 @@ export const BOUCLE_TOOLS: readonly ToolSpec[] = [
     type: "function",
     function: {
       name: "project_page_read",
-      description: "Read the synthetic brain page and timeline for a project slug.",
+      description: `Read the ${identity.demoMode ? "synthetic " : ""}brain page and timeline for a project slug.`,
       parameters: {
         type: "object",
         properties: { projectId: { type: "string" } },
@@ -148,7 +150,8 @@ export const BOUCLE_TOOLS: readonly ToolSpec[] = [
       },
     },
   },
-];
+  ];
+}
 
 export const BOUCLE_BRAIN_TOOL_NAMES = new Set([
   "brain_search",
@@ -160,9 +163,9 @@ export const BOUCLE_BRAIN_TOOL_NAMES = new Set([
 ]);
 
 /** Strictly read-only tool declarations for the global brain conversation. */
-export const BOUCLE_BRAIN_TOOLS: readonly ToolSpec[] = BOUCLE_TOOLS.filter((tool) =>
-  BOUCLE_BRAIN_TOOL_NAMES.has(tool.function.name),
-);
+export function buildBoucleBrainTools(identity: Identity): readonly ToolSpec[] {
+  return buildBoucleTools(identity).filter((tool) => BOUCLE_BRAIN_TOOL_NAMES.has(tool.function.name));
+}
 
 type ToolArgs = Record<string, unknown>;
 
@@ -170,6 +173,12 @@ function requiredString(args: ToolArgs, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${key} must be a non-empty string`);
   return value;
+}
+
+function validateProject(project: unknown): void {
+  if (typeof project === "string" && !isValidProjectId(project)) {
+    throw new Error("project must be a valid project slug");
+  }
 }
 
 /** The single implementation used by MCP registrations and provider relays. */
@@ -189,6 +198,7 @@ export async function executeBoucleTool(store: BoucleStore, name: string, args: 
       return { ticket, events: ticket ? store.listEvents(ticketId) : [] };
     }
     case "ticket_set":
+      validateProject(args.project);
       return store.setFields(args as unknown as SetTicketFieldsInput);
     case "ticket_transition":
       return store.transition(
@@ -204,8 +214,11 @@ export async function executeBoucleTool(store: BoucleStore, name: string, args: 
       store.addEvent(ticketId, "note", requiredString(args, "text"));
       return { ok: true };
     }
-    case "project_page_read":
-      return getProjectPage(requiredString(args, "projectId"));
+    case "project_page_read": {
+      const projectId = requiredString(args, "projectId");
+      if (!isValidProjectId(projectId)) throw new Error("projectId must be a valid project slug");
+      return getProjectPage(projectId);
+    }
     default:
       throw new Error(`Unknown Boucle tool: ${name}`);
   }

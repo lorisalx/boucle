@@ -3,9 +3,9 @@
 import { spawnedChatGuardrails } from "./config.ts";
 import { getIdentity, type Identity } from "./identity.ts";
 import {
-  BOUCLE_BRAIN_TOOLS,
   BOUCLE_BRAIN_TOOL_NAMES,
-  BOUCLE_TOOLS,
+  buildBoucleBrainTools,
+  buildBoucleTools,
   executeBoucleTool,
 } from "./boucle-tools.ts";
 import { getProjectPage } from "./projects.ts";
@@ -94,7 +94,10 @@ async function relayUserMessage(store: BoucleStore, conversation: ConversationRe
   }
   const user: ChatMessage = { role: "user", content: text };
   store.appendConversationMessage(conversation.conversationId, user);
-  const tools: ToolSpec[] = [...(conversation.kind === "brain" ? BOUCLE_BRAIN_TOOLS : BOUCLE_TOOLS)];
+  const identity = getIdentity();
+  const tools: ToolSpec[] = [
+    ...(conversation.kind === "brain" ? buildBoucleBrainTools(identity) : buildBoucleTools(identity)),
+  ];
   const allowedTools = conversation.kind === "brain" ? BOUCLE_BRAIN_TOOL_NAMES : undefined;
   const messages: ChatMessage[] = [
     { role: "system", content: conversation.instructions },
@@ -106,8 +109,8 @@ async function relayUserMessage(store: BoucleStore, conversation: ConversationRe
     messages.push(assistant);
     const calls = assistant.tool_calls ?? [];
     if (calls.length === 0) return;
-    for (const call of calls) {
-      const result = await toolResult(store, call, allowedTools);
+    const results = await Promise.all(calls.map((call) => toolResult(store, call, allowedTools)));
+    for (const result of results) {
       store.appendConversationMessage(conversation.conversationId, result);
       messages.push(result);
     }

@@ -64,6 +64,8 @@ export interface Settings {
   demoMode: boolean;
   providerName: string;
   providerConfigured: boolean;
+  budgetWarnUsd: number;
+  budgetStopUsd: number;
 }
 
 export interface ChatEntry {

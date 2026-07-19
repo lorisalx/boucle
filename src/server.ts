@@ -27,7 +27,7 @@ import {
   type TicketStatus,
   type UpdateLoopInput,
 } from "./store.ts";
-import { LoopScheduler } from "./scheduler.ts";
+import { getAgentBudgetThresholds, LoopScheduler } from "./scheduler.ts";
 import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
 import {
   appendBrainMessage,
@@ -360,6 +360,7 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
 
 app.get("/api/settings", (c) => {
   const identity = getIdentity();
+  const budget = getAgentBudgetThresholds();
   return c.json({
     appName: identity.appName,
     ownerName: identity.ownerName,
@@ -367,6 +368,8 @@ app.get("/api/settings", (c) => {
     demoMode: identity.demoMode,
     providerName: provider.name,
     providerConfigured: provider.isConfigured(),
+    budgetWarnUsd: budget.warnUsd,
+    budgetStopUsd: budget.stopUsd,
   });
 });
 
@@ -695,7 +698,7 @@ app.all("/mcp", async (c) => {
 });
 
 // Display paths are repo-relative / $HOME-based: raw absolute paths would leak
-// the machine username and folder layout into the UI of a fully synthetic demo.
+// the machine username and folder layout into the UI of the bundled demo.
 app.get("/api/mcp-info", (c) => {
   const token = getMcpToken(store);
   const url = `http://127.0.0.1:${BOUCLE_PORT}/mcp`;

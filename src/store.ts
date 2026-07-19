@@ -411,7 +411,7 @@ export function defaultTimelineScribePrompt(identity: Identity): string {
   const teamRef = identity.orgName ? `the ${identity.orgName} team` : "the team";
   const noopLine = identity.demoMode
     ? "4. After any edit, run scripts/gbrain-noop import fake-brain. It is intentionally a local no-op for this demo."
-    : "4. After any edit, run the configured brain reindex step if one exists.";
+    : "";
   return `Keep project timelines under ${brainDir} current from Boucle ticket activity so the Projects page reflects what
 ${teamRef} actually shipped.
 
@@ -425,8 +425,7 @@ Do exactly this each run:
 3. Before writing, use brain_search to dedupe and merge against existing tickets and brain context, then check
    the full page for the event. Append only, never rewrite or delete existing entries,
    keep oldest-first order, and create "## Timeline" only when missing.
-${noopLine}
-5. Summarize which pages changed, or return DONT_NOTIFY if none did.`;
+${noopLine ? `${noopLine}\n` : ""}${identity.demoMode ? "5" : "4"}. Summarize which pages changed, or return DONT_NOTIFY if none did.`;
 }
 
 interface SeedTicket extends UpsertTicketInput {
@@ -659,7 +658,7 @@ const DEFAULT_TICKETS: SeedTicket[] = [
  * Completed work from the last few weeks, so the board has history on first boot: the Done
  * view, project timelines, and the activity heatmap all read from these. Every entry is
  * `status: "done"` with `doneDaysAgo` so the seed backdates it; titles align with the
- * synthetic project pages and meeting notes under fake-brain/.
+ * demo project pages and meeting notes under fake-brain/.
  */
 const HISTORICAL_TICKETS: SeedTicket[] = [
   {
@@ -878,15 +877,15 @@ export class BoucleStore {
   private readonly db: DatabaseSync;
   private searchIndexer: SearchIndexer | null = null;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, identity: Identity = getIdentity()) {
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
     this.db.exec("PRAGMA busy_timeout = 5000;");
-    this.initSchema();
+    this.initSchema(identity);
   }
 
-  private initSchema(): void {
+  private initSchema(identity: Identity): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS tickets (
         ticket_id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
@@ -941,8 +940,8 @@ export class BoucleStore {
     `);
     this.migrate();
     this.closeAbandonedRuns();
-    this.seedLoops();
-    this.seedTickets();
+    this.seedLoops(identity);
+    if (identity.demoMode) this.seedTickets();
   }
 
   /** Additive column migrations for DBs created before a column existed. */
@@ -1024,8 +1023,7 @@ export class BoucleStore {
   }
 
   /** Insert the default loops, so a fresh install has working loops. Idempotent per loop name. */
-  private seedLoops(): void {
-    const identity = getIdentity();
+  private seedLoops(identity: Identity): void {
     const count = this.db.prepare(`SELECT COUNT(*) AS n FROM loops`).get() as { n: number };
     if (count.n === 0) {
       this.createLoop({
@@ -1076,7 +1074,7 @@ export class BoucleStore {
     }));
   }
 
-  /** Give a brand-new database a representative synthetic board plus recent completed history. */
+  /** Give a brand-new demo database a representative board plus recent completed history. */
   private seedTickets(): void {
     const count = this.db.prepare(`SELECT COUNT(*) AS n FROM tickets`).get() as { n: number };
     if (count.n !== 0) return;
@@ -1087,7 +1085,7 @@ export class BoucleStore {
           seed.status === "snoozed"
             ? new Date(Date.now() + (seed.snoozeDays ?? 1) * DAY_MS).toISOString()
             : null;
-        this.transition(ticket.ticketId, seed.status, snoozedUntil, "Synthetic first-boot seed", seed.workRef);
+        this.transition(ticket.ticketId, seed.status, snoozedUntil, "Demo first-boot seed", seed.workRef);
       }
       if (seed.doneDaysAgo != null) {
         const doneIso = new Date(Date.now() - seed.doneDaysAgo * DAY_MS).toISOString();

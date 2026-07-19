@@ -226,6 +226,8 @@ provider. TTS remains unimplemented.
 3. Neutral boot: `BOUCLE_BRAIN_DIR=/tmp/somebrain BOUCLE_OWNER_NAME=Alex` → no "Brumeline",
    "Nora", "synthetic", or "fake-brain" string in any prompt sent to the LLM or any UI string.
 4. `BOUCLE_PROVIDER=openai` without `BOUCLE_CHAT_MODEL` → clean boot error, not a stack trace.
-5. `git grep -il mistral -- src web` returns only `src/providers/mistral*.ts` (+ this doc / archive /
-   presentation assets), and `git grep -i "nora\|brumeline" -- src web` returns only identity
-   defaults in `src/identity.ts`.
+5. `git grep -il mistral -- src web` returns only `src/providers/mistral*.ts`, `src/chat.ts`
+   (legacy-fallback import), `src/config.ts` (legacy `~/.mistral-boucle` path hint),
+   `src/providers/index.ts` (default provider string), and `src/vibe.ts` (Vibe CLI model/pricing
+   configuration); `git grep -i "nora\|brumeline" -- src web` returns only identity defaults in
+   `src/identity.ts`.

@@ -350,6 +350,7 @@ export function listProjects(
 
 /** Full markdown body + parsed timeline for one project, or null when no page exists. */
 export function getProjectPage(projectId: string): ProjectPage | null {
+  if (!isValidProjectId(projectId)) return null;
   const path = projectFilePath(projectId);
   if (!existsSync(path)) return null;
   const markdown = readFileSync(path, "utf8");
@@ -381,7 +382,7 @@ export function setBrainSearchReindexer(reindex: () => void): void {
   searchReindexer = reindex;
 }
 
-/** Fire-and-forget synthetic reindex hook, debounced to follow project edits. */
+/** Fire-and-forget local reindex hook, debounced to follow project edits. */
 export function scheduleBrainReindex(): void {
   searchReindexer?.();
   if (reindexTimer) clearTimeout(reindexTimer);
@@ -402,6 +403,7 @@ export function scheduleBrainReindex(): void {
  * file only changes when the pick actually moves the project to another bucket.
  */
 export function writeProjectStatus(projectId: string, status: ProjectStatus): "written" | "noop" | "no_page" {
+  if (!isValidProjectId(projectId)) return "no_page";
   const path = projectFilePath(projectId);
   if (!existsSync(path)) return "no_page";
   const markdown = readFileSync(path, "utf8");
@@ -428,6 +430,7 @@ export function writeProjectStatus(projectId: string, status: ProjectStatus): "w
  * when missing), keeping the house oldest-first order. Returns the new timeline.
  */
 export function addTimelineEntry(projectId: string, text: string, date?: string): TimelineEntry[] | null {
+  if (!isValidProjectId(projectId)) return null;
   const path = projectFilePath(projectId);
   if (!existsSync(path)) return null;
   const day = date ?? new Date().toISOString().slice(0, 10);
@@ -466,6 +469,7 @@ const BACKLINK_TTL_MS = 10 * 60_000;
 const backlinkCache = new Map<string, { at: number; links: Backlink[] }>();
 
 export function getBacklinks(projectId: string): Promise<Backlink[]> {
+  if (!isValidProjectId(projectId)) return Promise.resolve([]);
   const cached = backlinkCache.get(projectId);
   if (cached && Date.now() - cached.at < BACKLINK_TTL_MS) return Promise.resolve(cached.links);
   return new Promise((resolve) => {

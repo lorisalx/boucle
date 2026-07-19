@@ -1,5 +1,5 @@
 /**
- * Brain — the synthetic brain as an interactive force-directed graph.
+ * Brain — the local brain as an interactive force-directed graph.
  *
  * Projects, meetings, people, and open tickets become nodes; ownership,
  * attendance, project relations, and per-project tickets become edges. All of it
