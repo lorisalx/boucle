@@ -9,9 +9,9 @@ Boucle runs as one Node process and serves the built web application. SQLite sto
 - Git
 - About 1 vCPU for a small instance
 - A provider API key for chat
-- Vibe CLI for loops, smart capture, routing, and enrichment
+- Vibe, Codex, or Claude CLI for loops, smart capture, routing, and enrichment
 
-The bundled demo uses Mistral for provider calls and Vibe. A custom brain can use either supported provider for chat, embeddings, and transcription. Agent work still uses Vibe.
+The bundled demo uses Mistral for provider calls and Vibe. A custom brain can use either supported provider for chat, embeddings, and transcription, and any supported agent runner. Vibe remains the default.
 
 ## Install
 
@@ -69,6 +69,8 @@ Boucle reads `.env` from the repository root. It listens on `http://localhost:44
 
 Demo mode is derived from `BOUCLE_BRAIN_DIR`. It is active only when that path resolves to the bundled `fake-brain` directory.
 
+Identity, provider, runner, model, and t3code fields can also be saved in Settings. Values saved there use `boucle_meta` and override environment variables. Environment variables override defaults. Provider API keys stay environment-only. The t3code orchestration token is the documented exception and can be saved in Settings.
+
 ### Provider
 
 | Variable | Default | Purpose |
@@ -83,16 +85,63 @@ Demo mode is derived from `BOUCLE_BRAIN_DIR`. It is active only when that path r
 
 See [Providers](providers.md) for provider examples and degradation behavior.
 
-### Vibe and budgets
+### Agent runners, t3code, and budgets
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `BOUCLE_RUNNER` | `vibe` | Agent runner selector. `vibe` is the only accepted value. |
+| `BOUCLE_RUNNER` | `vibe` | Default agent runner. Accepted values are `vibe`, `codex`, and `claude`. |
 | `BOUCLE_VIBE_BIN` | `$HOME/.local/bin/vibe`, then `vibe` on `PATH` | Vibe executable override. |
+| `BOUCLE_CODEX_BIN` | `$HOME/.local/bin/codex`, then `codex` on `PATH` | Codex executable override. |
+| `BOUCLE_CLAUDE_BIN` | `claude` on `PATH` | Claude executable override. |
 | `BOUCLE_LOOP_TIMEOUT_MIN` | `12` | Minutes before an agent invocation is terminated. |
 | `BOUCLE_VIBE_MAX_PRICE` | `0.25` | Per-invocation Vibe price ceiling in US dollars. |
-| `BOUCLE_AGENT_BUDGET_WARN` | `10` | Cumulative recorded Vibe spend that emits a warning. |
-| `BOUCLE_AGENT_BUDGET_STOP` | `30` | Cumulative recorded Vibe spend that blocks new agent invocations. |
+| `BOUCLE_AGENT_BUDGET_WARN` | `10` | Cumulative recorded agent spend that emits a warning. |
+| `BOUCLE_AGENT_BUDGET_STOP` | `30` | Cumulative recorded agent spend that blocks new agent invocations. |
+| `BOUCLE_T3CODE_URL` | Empty | t3code base URL. URL, token, and project enable the ticket action. |
+| `BOUCLE_T3CODE_TOKEN` | Empty | t3code orchestration bearer token. This can also be stored in Settings. |
+| `BOUCLE_T3CODE_PROJECT` | Empty | Folder or project slug where t3code ticket chats open. There is no hardcoded fallback. |
+
+## Agent runners
+
+The global runner applies to scheduled loops and one-shot agent work. A loop's runner field can override it. Boucle creates isolated MCP configuration under `var/vibe`, `var/codex`, or `var/claude` for each scope.
+
+### Vibe
+
+Install Vibe, set `MISTRAL_API_KEY`, and leave `BOUCLE_RUNNER` unset for the existing demo behavior. Vibe enforces `BOUCLE_VIBE_MAX_PRICE` per invocation and reports session cost.
+
+### Codex
+
+Install and authenticate the Codex CLI, then select `codex` globally or on one loop. Boucle runs `codex exec` with a scoped `CODEX_HOME`, danger-full-access sandbox mode, the loop work directory, and a generated Streamable HTTP MCP entry. Resume is used when the installed CLI advertises `codex exec resume`. Codex cost is stored as null when its session data does not expose a price, and the UI displays `n/a`.
+
+### Claude
+
+Install and authenticate Claude Code, then select `claude` globally or on one loop. Boucle uses print mode with JSON output and a generated `--mcp-config`. It uses `--dangerously-skip-permissions` only when the installed CLI advertises the flag, otherwise it allows Boucle MCP tools explicitly. Claude's result envelope supplies the session ID, final text, and reported cost.
+
+## t3code ticket chats
+
+Set the URL, token, and project in Settings or the environment:
+
+```dotenv
+BOUCLE_T3CODE_URL=https://t3code.example
+BOUCLE_T3CODE_TOKEN=replace_with_your_token
+BOUCLE_T3CODE_PROJECT=boucle
+```
+
+When URL, token, and project are configured, tickets show an `Open in t3code` secondary action. Boucle creates the thread in the configured project and stores its deep link independently from the browser chat. Browser chats remain the primary chat action.
+
+The spawned t3code chat can use Boucle tools only when Boucle's MCP server is also present in the t3code or Claude configuration. Read the current URL and token from `/api/mcp-info`, then add an HTTP server entry like this:
+
+```json
+{
+  "mcpServers": {
+    "boucle": {
+      "type": "http",
+      "url": "http://127.0.0.1:4419/mcp",
+      "headers": { "Authorization": "Bearer <token from /api/mcp-info>" }
+    }
+  }
+}
+```
 
 ## Run with systemd
 

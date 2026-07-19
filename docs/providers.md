@@ -1,6 +1,8 @@
-# Providers
+# Providers and agent runners
 
 Boucle selects one provider at process start. Set `BOUCLE_PROVIDER=mistral` or `BOUCLE_PROVIDER=openai`. An unset value selects Mistral. Any other value stops startup with a configuration error.
+
+Settings saved in the web UI take precedence over environment variables. Environment variables take precedence over defaults. The Settings page shows the source for each field. Provider API keys remain environment-only.
 
 Provider conversations are stored locally in SQLite. Each new conversation records its provider and model. Boucle refuses to continue a local conversation when its recorded provider differs from the active provider. Legacy Mistral conversation IDs remain readable when `MISTRAL_API_KEY` is configured.
 
@@ -113,12 +115,19 @@ The provider capability checks describe API support. Browser microphone capture 
 
 ## Agent runner
 
-Provider selection does not select the agent runner. Scheduled loops, smart capture, routing, and enrichment use Vibe CLI. `BOUCLE_RUNNER=vibe` is the only supported runner value. Vibe receives the Boucle MCP endpoint and uses its own Mistral model configuration.
+Provider selection does not select the agent runner. Set `BOUCLE_RUNNER` to `vibe`, `codex`, or `claude`, or save the default in Settings. Each loop can override the global runner and model. Smart capture, routing, and enrichment use the global runner.
+
+| Runner | Binary resolution | Invocation and requirements | Cost record |
+|---|---|---|---|
+| Vibe | `BOUCLE_VIBE_BIN`, then `$HOME/.local/bin/vibe`, then `vibe` | Needs `MISTRAL_API_KEY`. Boucle writes a scoped Vibe config with its MCP server. | Reported session cost |
+| Codex | `BOUCLE_CODEX_BIN`, then `$HOME/.local/bin/codex`, then `codex` | Log in with Codex or set its supported API credential. Boucle creates a scoped `CODEX_HOME` and MCP config. | `n/a` when Codex does not expose a price |
+| Claude | `BOUCLE_CLAUDE_BIN`, then `claude` | Log in with Claude Code or configure its supported API credential. Boucle passes a scoped MCP config and uses JSON output. | `total_cost_usd` from Claude |
+
+All runners receive `BOUCLE_DB`, Boucle's bearer-protected MCP endpoint, and the configured timeout. Vibe remains the default, so an existing installation behaves as before when `BOUCLE_RUNNER` is unset.
 
 ## Roadmap
 
 - Native Anthropic support through the Messages API
-- Codex and Claude agent runners
 - Text-to-speech
 
-These items are not implemented. Boucle currently transcribes voice input but does not generate voice output.
+Boucle currently transcribes voice input but does not generate voice output.

@@ -3,7 +3,7 @@
  *
  * Two paths out:
  *  - one-liner → creates a single item directly (Enter);
- *  - pasted blob (multi-line / long) → "AI split & route": a headless Vibe run
+ *  - pasted blob (multi-line / long) → "AI split & route": a headless agent run
  *    splits it into typed items, routes them to projects, and merges with existing
  *    open tickets instead of duplicating. Async — items appear as the board polls.
  *

@@ -4,6 +4,8 @@ node_modules/
 *.db
 web/dist/
 var/vibe/
+var/codex/
+var/claude/
 .gstack/
 .pnpm-store/
 .DS_Store

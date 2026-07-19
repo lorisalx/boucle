@@ -10,17 +10,30 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { api, type Loop, type LoopInput, type LoopRun, type LoopRunStatus } from "./api.ts";
-import { navigate, useLoops } from "./hooks.ts";
+import { api, type Loop, type LoopInput, type LoopRun, type LoopRunStatus, type RunnerName } from "./api.ts";
+import { navigate, useIdentity, useLoops } from "./hooks.ts";
 import { Button, Status, Switch, Tag, ThemeToggle, type Tone, cx, formatWhen } from "./ui.tsx";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 /** Friendly label + tone for the model a loop runs on. */
-function modelBadge(model: string | null): { label: string; tone: Tone } {
-  if (!model) return { label: "devstral-2512", tone: "neutral" };
+function modelBadge(model: string | null, runner: RunnerName): { label: string; tone: Tone } {
+  if (!model) return { label: `${runner} default`, tone: "neutral" };
   if (model.startsWith("devstral")) return { label: model, tone: "success" };
   return { label: model, tone: "neutral" };
+}
+
+function threadHref(runner: RunnerName, loopId: string, sessionId: string): string {
+  const scope = `loops_${encodeURIComponent(loopId)}`;
+  return runner === "vibe"
+    ? `/vibe/${scope}/${encodeURIComponent(sessionId)}`
+    : `/agent/${runner}/${scope}/${encodeURIComponent(sessionId)}`;
+}
+
+function modelHelp(runner: RunnerName): string {
+  if (runner === "vibe") return "Vibe model. Blank uses devstral-2512.";
+  if (runner === "codex") return "Codex model. Blank uses the CLI account or profile default.";
+  return "Claude model or alias. Blank uses the Claude CLI default.";
 }
 
 const STATUS_TONE: Record<LoopRunStatus, Tone> = {
@@ -97,6 +110,7 @@ function CopyVibeCommand({ workdir, loopId, sessionId }: { workdir: string | nul
 
 export function Loops() {
   const { loops, status, refresh } = useLoops();
+  const settings = useIdentity();
   const [master, setMaster] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -140,7 +154,7 @@ export function Loops() {
       ) : null}
 
       <div className="mb-4 flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs">
-        <span className="text-muted">Recorded Vibe spend</span>
+        <span className="text-muted">Recorded agent spend</span>
         <span className="font-mono font-medium text-fg">${cumulativeCostUsd.toFixed(4)}</span>
       </div>
 
@@ -183,11 +197,13 @@ export function Loops() {
                   <Status tone={STATUS_TONE[l.lastStatus]}>{l.lastStatus}</Status>
                 ) : null}
                 {(() => {
-                  const m = modelBadge(l.model);
+                  const runner = l.runner ?? settings.runner;
+                  const m = modelBadge(l.model, runner);
                   return (
-                    <Tag tone={m.tone} className="shrink-0" >
-                      {m.label}
-                    </Tag>
+                    <>
+                      <Tag className="shrink-0">{runner}</Tag>
+                      <Tag tone={m.tone} className="shrink-0">{m.label}</Tag>
+                    </>
                   );
                 })()}
               </div>
@@ -240,10 +256,12 @@ const NEW_DRAFT: LoopInput = {
   timezone: "Europe/Paris",
   profile: null,
   codexHome: null,
-  model: "devstral-2512",
+  model: null,
+  runner: null,
 };
 
 export function LoopDetail({ loopId }: { loopId: string }) {
+  const settings = useIdentity();
   const isNew = loopId === "new";
   const [draft, setDraft] = useState<LoopInput | null>(isNew ? NEW_DRAFT : null);
   const [runs, setRuns] = useState<LoopRun[]>([]);
@@ -292,6 +310,10 @@ export function LoopDetail({ loopId }: { loopId: string }) {
   if (!draft) return <div className="mx-auto max-w-2xl px-6 py-8 text-sm text-muted">Loading…</div>;
 
   const days = (draft.activeDays ?? "").split(",").map((s) => s.trim());
+  const effectiveRunner = draft.runner ?? settings.runner;
+  const threadRunner = draft.threadProject === "vibe" || draft.threadProject === "codex" || draft.threadProject === "claude"
+    ? draft.threadProject
+    : effectiveRunner;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
@@ -311,13 +333,13 @@ export function LoopDetail({ loopId }: { loopId: string }) {
         <div className="mb-5 flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
           <MessageSquareIcon className="size-4 text-dim" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-fg">Vibe session</p>
-            {draft.threadProject === "vibe" ? (
+            <p className="text-sm font-medium text-fg">{threadRunner} session</p>
+            {draft.threadProject === "vibe" || draft.threadProject === "codex" || draft.threadProject === "claude" ? (
               <a
-                href={`/vibe/loops_${encodeURIComponent(loopId)}/${encodeURIComponent(draft.threadId)}`}
+                href={threadHref(threadRunner, loopId, draft.threadId)}
                 className="block truncate font-mono text-xs text-link hover:underline"
               >
-                vibe · {draft.threadId}
+                {threadRunner} · {draft.threadId}
               </a>
             ) : (
               <p className="truncate font-mono text-xs text-dim">
@@ -336,7 +358,7 @@ export function LoopDetail({ loopId }: { loopId: string }) {
         <Field label="Description" hint="Shown in the loop list.">
           <Text value={draft.description ?? ""} onChange={(v) => set("description", v)} />
         </Field>
-        <Field label="Prompt" hint="The full instructions handed to Vibe CLI.">
+        <Field label="Prompt" hint={`The full instructions handed to ${effectiveRunner}.`}>
           <textarea
             value={draft.prompt}
             onChange={(e) => set("prompt", e.target.value)}
@@ -383,9 +405,23 @@ export function LoopDetail({ loopId }: { loopId: string }) {
           </Field>
         </div>
 
-        <Field label="Model" hint="Vibe active model. Blank defaults to devstral-2512.">
-          <Text value={draft.model ?? ""} onChange={(v) => set("model", v || "devstral-2512")} />
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Runner" hint={`Blank uses the global ${settings.runner} setting.`}>
+            <select
+              value={draft.runner ?? ""}
+              onChange={(event) => set("runner", event.target.value ? event.target.value as RunnerName : null)}
+              className={INPUT_CLASS}
+            >
+              <option value="">Global ({settings.runner})</option>
+              <option value="vibe">Vibe</option>
+              <option value="codex">Codex</option>
+              <option value="claude">Claude</option>
+            </select>
+          </Field>
+          <Field label="Model" hint={modelHelp(effectiveRunner)}>
+            <Text value={draft.model ?? ""} onChange={(v) => set("model", v.trim() || null)} />
+          </Field>
+        </div>
 
         <label className="flex items-center gap-2 text-sm text-fg">
           <input
@@ -412,8 +448,9 @@ export function LoopDetail({ loopId }: { loopId: string }) {
             <p className="text-xs text-dim">No runs yet.</p>
           ) : (
             <div className="flex flex-col gap-1.5">
-              {runs.map((r) => (
-                <div key={r.runId} className="rounded-lg border border-border bg-surface px-3 py-2">
+              {runs.map((r) => {
+                const runRunner = r.runner ?? threadRunner;
+                return <div key={r.runId} className="rounded-lg border border-border bg-surface px-3 py-2">
                   <div className="flex items-center gap-2 font-mono text-[11px] text-dim">
                     <Status tone={STATUS_TONE[r.status]} pulse={r.status === "running"}>
                       {r.status}
@@ -421,17 +458,19 @@ export function LoopDetail({ loopId }: { loopId: string }) {
                     <span>{formatWhen(r.startedAt)}</span>
                     <span>· {r.trigger}</span>
                     {r.exitCode !== null ? <span>· exit {r.exitCode}</span> : null}
-                    {r.costUsd !== null ? <span>· ${r.costUsd.toFixed(4)}</span> : null}
+                    <span>· cost {r.costUsd !== null ? `$${r.costUsd.toFixed(4)}` : "n/a"}</span>
                     {r.sessionId ? (
                       <span className="inline-flex items-center" title={r.sessionId}>
                         ·&nbsp;
                         <a
-                          href={`/vibe/loops_${encodeURIComponent(loopId)}/${encodeURIComponent(r.sessionId)}`}
+                          href={threadHref(runRunner, loopId, r.sessionId)}
                           className="text-link hover:underline"
                         >
                           session {r.sessionId.slice(0, 8)}
                         </a>
-                        <CopyVibeCommand workdir={workdir} loopId={loopId} sessionId={r.sessionId} />
+                        {runRunner === "vibe" ? (
+                          <CopyVibeCommand workdir={workdir} loopId={loopId} sessionId={r.sessionId} />
+                        ) : null}
                       </span>
                     ) : null}
                   </div>
@@ -440,8 +479,8 @@ export function LoopDetail({ loopId }: { loopId: string }) {
                       {r.summary}
                     </pre>
                   ) : null}
-                </div>
-              ))}
+                </div>;
+              })}
             </div>
           )}
         </section>

@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, BotIcon, Loader2Icon, SendIcon, WrenchIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { api, type VibeTranscript } from "./api.ts";
+import { api, type RunnerName, type VibeTranscript } from "./api.ts";
 import { BrainMarkdown, type WikiLinkProps } from "./Markdown.tsx";
 import { Button, ThemeToggle, cx } from "./ui.tsx";
 
@@ -10,7 +10,7 @@ const EMPTY_WIKI: WikiLinkProps = {
   onOpenProject: () => {},
 };
 
-export function VibeThread({ scope, sessionId }: { scope: string; sessionId: string }) {
+export function VibeThread({ runner, scope, sessionId }: { runner: RunnerName; scope: string; sessionId: string }) {
   const [thread, setThread] = useState<VibeTranscript | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -19,8 +19,9 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
 
   const load = useCallback(() => {
     setError(null);
-    api.vibe.get(scope, sessionId).then(setThread).catch((e) => setError(String(e.message ?? e)));
-  }, [scope, sessionId]);
+    const request = runner === "vibe" ? api.vibe.get(scope, sessionId) : api.agents.get(runner, scope, sessionId);
+    request.then(setThread).catch((e) => setError(String(e.message ?? e)));
+  }, [runner, scope, sessionId]);
 
   useEffect(load, [load]);
   useEffect(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), [thread?.entries.length]);
@@ -31,6 +32,7 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
   }, [load, thread?.running]);
 
   const send = () => {
+    if (runner !== "vibe") return;
     const message = text.trim();
     if (!message || sending || thread?.running) return;
     setSending(true);
@@ -55,7 +57,7 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
           <ArrowLeftIcon className="size-4" /> Back
         </a>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold text-fg">{thread?.meta.title ?? "Vibe thread"}</h1>
+          <h1 className="truncate text-sm font-semibold text-fg">{thread?.meta.title ?? `${runner} thread`}</h1>
           <p className="truncate font-mono text-[10px] text-dim">
             {thread?.meta.sessionId ?? sessionId}
             {thread?.meta.costUsd !== null && thread?.meta.costUsd !== undefined
@@ -69,7 +71,7 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
       <main className="flex-1 space-y-4 py-6">
         {!thread && !error ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-            <Loader2Icon className="size-4 animate-spin" /> Loading Vibe thread…
+            <Loader2Icon className="size-4 animate-spin" /> Loading {runner} thread…
           </div>
         ) : null}
         {thread?.entries.map((entry, index) => {
@@ -104,13 +106,13 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
         })}
         {thread?.running ? (
           <div className="flex items-center gap-2 text-xs text-muted">
-            <Loader2Icon className="size-3.5 animate-spin" /> Vibe running…
+            <Loader2Icon className="size-3.5 animate-spin" /> {runner} running…
           </div>
         ) : null}
         <div ref={bottomRef} />
       </main>
 
-      <footer className="sticky bottom-0 border-t border-border bg-bg py-4">
+      {runner === "vibe" ? <footer className="sticky bottom-0 border-t border-border bg-bg py-4">
         {error ? <p className="mb-2 text-xs text-danger">{error}</p> : null}
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-surface p-2 shadow-[var(--float)] focus-within:border-focus">
           <textarea
@@ -129,7 +131,7 @@ export function VibeThread({ scope, sessionId }: { scope: string; sessionId: str
             {running ? "Vibe running…" : "Send"}
           </Button>
         </div>
-      </footer>
+      </footer> : null}
     </div>
   );
 }

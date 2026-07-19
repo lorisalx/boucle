@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  ArrowUpRightIcon,
   BotIcon,
   CheckIcon,
   ClockIcon,
@@ -103,6 +104,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   const [note, setNote] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [spawningT3Code, setSpawningT3Code] = useState(false);
 
   const refetch = useCallback(() => {
     api
@@ -120,7 +122,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
     refetch();
   }, [refetch]);
 
-  // While a Vibe re-run is in flight, poll so the timeline + updated fields appear live.
+  // While an agent re-run is in flight, poll so the timeline + updated fields appear live.
   useEffect(() => {
     if (!enriching) return;
     const id = setInterval(refetch, 5000);
@@ -224,6 +226,34 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                   <MessageSquareIcon className="size-3.5" /> Start chat
                 </Button>
               )}
+              {ticket.t3codeThreadId?.startsWith("t3code:") && ticket.t3codeOpenUrl ? (
+                <a
+                  href={ticket.t3codeOpenUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium text-fg transition-colors hover:border-border-hover hover:bg-side"
+                >
+                  Open in t3code <ArrowUpRightIcon className="size-3.5" />
+                </a>
+              ) : identity.t3codeConfigured ? (
+                <Button
+                  variant="outline"
+                  disabled={spawningT3Code}
+                  onClick={() => {
+                    setSpawningT3Code(true);
+                    api.spawnT3Code(ticket.ticketId)
+                      .then((result) => {
+                        window.open(result.openUrl, "_blank", "noopener,noreferrer");
+                        refetch();
+                      })
+                      .catch((error) => alert(`t3code failed: ${error.message ?? error}`))
+                      .finally(() => setSpawningT3Code(false));
+                  }}
+                >
+                  {spawningT3Code ? <Loader2Icon className="size-3.5 animate-spin" /> : <ArrowUpRightIcon className="size-3.5" />}
+                  Open in t3code
+                </Button>
+              ) : null}
               <div className="ml-auto flex items-center gap-1">
                 <KindSelect
                   value={ticket.kind}
@@ -255,7 +285,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
 
             <div className="mt-4 border-t border-border pt-4">
               <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-                <SparklesIcon className="size-3.5" /> Add context &amp; re-run Vibe
+                <SparklesIcon className="size-3.5" /> Add context &amp; re-run {identity.runner}
               </label>
               <textarea
                 value={note}
@@ -275,18 +305,18 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
                 >
                   {enriching ? (
                     <>
-                      <Loader2Icon className="size-3.5 animate-spin" /> Vibe running…
+                      <Loader2Icon className="size-3.5 animate-spin" /> {identity.runner} running…
                     </>
                   ) : (
                     <>
-                      <BotIcon className="size-3.5" /> Re-run Vibe
+                      <BotIcon className="size-3.5" /> Re-run {identity.runner}
                     </>
                   )}
                 </Button>
                 <span className="text-xs text-muted">
                   {enriching
                     ? `Re-investigating the ${identity.demoMode ? "synthetic " : ""}brain… this can take a few minutes.`
-                    : `Vibe (Devstral) searches the ${identity.demoMode ? "synthetic " : ""}brain and updates this ticket in place.`}
+                    : `${identity.runner} searches the ${identity.demoMode ? "synthetic " : ""}brain and updates this ticket in place.`}
                 </span>
               </div>
             </div>

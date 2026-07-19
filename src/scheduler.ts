@@ -1,11 +1,11 @@
 /**
- * Boucle scheduler — owns loop timing and runs every due loop through Vibe CLI.
+ * Boucle scheduler — owns loop timing and runs every due loop through its selected agent runner.
  */
 import { BOUCLE_PORT } from "./config.ts";
 import { getMcpToken } from "./mcp.ts";
-import { getAgentRunner, type AgentRunner } from "./runner.ts";
+import { getAgentRunner, type AgentExecResult, type AgentExecSpec, type AgentRunner } from "./runner.ts";
+import type { RunnerName } from "./settings.ts";
 import type { BoucleStore, Loop, LoopRun, LoopRunTrigger } from "./store.ts";
-import type { VibeExecResult, VibeExecSpec } from "./vibe.ts";
 
 const TICK_MS = 30_000;
 const MAX_SUMMARY_CHARS = 8_000;
@@ -17,6 +17,11 @@ function budgetThreshold(name: string, fallback: number): number {
 
 const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
 const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
+
+function positiveNumber(name: string, fallback: number): number {
+  const value = Number.parseFloat(process.env[name] ?? "");
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 export function getAgentBudgetThresholds(): { warnUsd: number; stopUsd: number } {
   return { warnUsd: BUDGET_WARN, stopUsd: BUDGET_STOP };
@@ -62,12 +67,12 @@ export class LoopScheduler {
 
   private readonly store: BoucleStore;
   private readonly dbPath: string;
-  private readonly runner: AgentRunner;
+  private readonly runnerOverride: AgentRunner | null;
 
-  constructor(store: BoucleStore, dbPath: string, runner: AgentRunner = getAgentRunner()) {
+  constructor(store: BoucleStore, dbPath: string, runner: AgentRunner | null = null) {
     this.store = store;
     this.dbPath = dbPath;
-    this.runner = runner;
+    this.runnerOverride = runner;
   }
 
   start(): void {
@@ -115,12 +120,17 @@ export class LoopScheduler {
   /** Continue an existing Vibe transcript without blocking the request that started it. */
   continueVibeThread(scope: string, sessionId: string, prompt: string): boolean {
     if (this.isVibeRunning(scope)) return false;
-    this.assertVibeBudget();
+    this.assertAgentBudget();
     const loop = scope.startsWith("loops_") ? this.store.getLoop(scope.slice("loops_".length)) : null;
     this.vibeScopes.add(scope);
-    let execution: Promise<VibeExecResult>;
+    let execution: Promise<AgentExecResult>;
     try {
-      execution = this.execTrackedVibe({ prompt, sessionId, scopeId: scope, model: loop?.model ?? null }, "vibe_thread");
+      const vibe = getAgentRunner("vibe", this.store);
+      execution = this.execTracked(
+        vibe,
+        { prompt, resumeSessionId: sessionId, scope, model: loop?.model ?? null },
+        "vibe_thread",
+      );
     } catch (error) {
       this.vibeScopes.delete(scope);
       throw error;
@@ -145,22 +155,27 @@ export class LoopScheduler {
     return this.running.has(`enrich:${ticketId}`);
   }
 
-  /** One-shot Vibe run that re-investigates one ticket through Boucle MCP. */
+  /** One-shot global-runner invocation that re-investigates one ticket through Boucle MCP. */
   enrichTicket(ticketId: string, prompt: string): boolean {
     const key = `enrich:${ticketId}`;
     if (this.running.has(key)) return false;
-    this.assertVibeBudget();
+    this.assertAgentBudget();
     this.running.add(key);
-    this.store.addEvent(ticketId, "note", "Vibe re-run requested");
-    const base = this.store.listLoops()[0] ?? null;
-    this.execTrackedVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` }, "enrich")
+    const runner = this.runnerFor(null);
+    this.store.addEvent(ticketId, "note", `${runner.name} re-run requested`);
+    this.execTracked(runner, {
+      prompt,
+      model: this.auxiliaryModel(runner),
+      resumeSessionId: null,
+      scope: `${key}:${Date.now()}`,
+    }, "enrich")
       .then((res) => {
         const status = res.timedOut ? "timed out" : res.code === 0 ? "finished" : "failed";
-        this.store.addEvent(ticketId, "note", `Vibe re-run ${status}`);
+        this.store.addEvent(ticketId, "note", `${runner.name} re-run ${status}`);
       })
       .catch((err: unknown) => {
         const detail = err instanceof Error ? err.message : String(err);
-        this.store.addEvent(ticketId, "note", `Vibe re-run failed: ${detail.slice(0, 200)}`);
+        this.store.addEvent(ticketId, "note", `${runner.name} re-run failed: ${detail.slice(0, 200)}`);
       })
       .finally(() => this.running.delete(key));
     return true;
@@ -170,10 +185,10 @@ export class LoopScheduler {
     return [...this.smartRuns.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 10);
   }
 
-  /** One-shot Vibe run that parses pasted text into Boucle items through MCP. */
+  /** One-shot global-runner invocation that parses pasted text into Boucle items through MCP. */
   smartCapture(batchId: string, prompt: string): void {
     const key = `smart:${batchId}`;
-    this.assertVibeBudget();
+    this.assertAgentBudget();
     this.running.add(key);
     this.smartRuns.set(batchId, {
       batchId,
@@ -182,8 +197,13 @@ export class LoopScheduler {
       finishedAt: null,
       detail: "",
     });
-    const base = this.store.listLoops()[0] ?? null;
-    this.execTrackedVibe({ prompt, model: base?.model ?? null, scopeId: `${key}:${Date.now()}` }, "smart_capture")
+    const runner = this.runnerFor(null);
+    this.execTracked(runner, {
+      prompt,
+      model: this.auxiliaryModel(runner),
+      resumeSessionId: null,
+      scope: `${key}:${Date.now()}`,
+    }, "smart_capture")
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
         const prev = this.smartRuns.get(batchId);
@@ -212,18 +232,19 @@ export class LoopScheduler {
   }
 
   private run(loop: Loop, trigger: LoopRunTrigger): LoopRun {
-    this.assertVibeBudget();
+    this.assertAgentBudget();
 
     this.running.add(loop.loopId);
-    const run = this.store.recordRunStart(loop.loopId, trigger);
-    this.runLoop(loop, trigger)
+    const runner = this.runnerFor(loop.runner);
+    const run = this.store.recordRunStart(loop.loopId, trigger, runner.name);
+    this.runLoop(loop, trigger, runner)
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
         if (res.sessionId) {
           this.store.updateLoop({
             loopId: loop.loopId,
             threadId: res.sessionId,
-            threadProject: "vibe",
+            threadProject: runner.name,
             threadOpenUrl: null,
           });
         }
@@ -258,21 +279,36 @@ export class LoopScheduler {
     return run;
   }
 
-  private runLoop(loop: Loop, trigger: LoopRunTrigger): Promise<VibeExecResult> {
-    return this.execVibe({
+  private runLoop(loop: Loop, trigger: LoopRunTrigger, runner: AgentRunner): Promise<AgentExecResult> {
+    return this.execRunner(runner, {
       prompt: buildLoopTurnPrompt(loop, trigger),
       model: loop.model,
-      sessionId: loop.threadId,
-      scopeId: `loops/${loop.loopId}`,
+      resumeSessionId: loop.threadProject === runner.name ? loop.threadId : null,
+      scope: `loops_${loop.loopId}`,
     });
   }
 
-  private execVibe(spec: VibeExecSpec): Promise<VibeExecResult> {
-    return this.runner.exec(spec, {
+  private runnerFor(override: RunnerName | null): AgentRunner {
+    return this.runnerOverride ?? getAgentRunner(override, this.store);
+  }
+
+  private auxiliaryModel(runner: AgentRunner): string | null {
+    if (runner.name !== "vibe") return null;
+    return this.store.listLoops()[0]?.model ?? null;
+  }
+
+  private execRunner(
+    runner: AgentRunner,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
+  ): Promise<AgentExecResult> {
+    return runner.exec({
+      ...spec,
       dbPath: this.dbPath,
       mcpToken: getMcpToken(this.store),
       mcpUrl: `http://127.0.0.1:${BOUCLE_PORT}/mcp`,
       workdir: process.cwd(),
+      maxPriceUsd: positiveNumber("BOUCLE_VIBE_MAX_PRICE", 0.25),
+      timeoutMin: positiveNumber("BOUCLE_LOOP_TIMEOUT_MIN", 12),
     });
   }
 
@@ -281,7 +317,7 @@ export class LoopScheduler {
   }
 
   /** Apply the cumulative hard stop to every agent entry point. */
-  assertVibeBudget(): void {
+  assertAgentBudget(): void {
     const budget = this.getBudgetSummary();
     if (budget.warning && budget.warning !== this.lastBudgetWarning) {
       console.warn(budget.warning);
@@ -292,14 +328,15 @@ export class LoopScheduler {
     }
   }
 
-  /** Store one-shot Vibe work beside loop runs so its reported cost and session count toward the global budget. */
-  private execTrackedVibe(
-    spec: VibeExecSpec,
+  /** Store one-shot agent work beside loop runs so its reported cost and session count toward the global budget. */
+  private execTracked(
+    runner: AgentRunner,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
     trigger: "smart_capture" | "enrich" | "vibe_thread",
-  ): Promise<VibeExecResult> {
-    const auxiliaryLoopId = `vibe:${trigger}`;
-    const run = this.store.recordRunStart(auxiliaryLoopId, trigger);
-    return this.execVibe(spec)
+  ): Promise<AgentExecResult> {
+    const auxiliaryLoopId = `${runner.name}:${trigger}`;
+    const run = this.store.recordRunStart(auxiliaryLoopId, trigger, runner.name);
+    return this.execRunner(runner, spec)
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";
         this.store.recordRunFinish(

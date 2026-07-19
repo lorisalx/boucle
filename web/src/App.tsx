@@ -16,12 +16,15 @@ export function App() {
   const hash = useHashRoute();
   const chatMatch = /^\/chats\/([^/]+)$/.exec(window.location.pathname);
   const vibeMatch = /^\/vibe\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
+  const agentMatch = /^\/agent\/(vibe|codex|claude)\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
   const ticketMatch = /^#\/ticket\/(.+)$/.exec(hash);
   const loopMatch = /^#\/loops\/(.+)$/.exec(hash);
 
   let view = <Home />;
-  if (vibeMatch) {
-    view = <VibeThread scope={decodeURIComponent(vibeMatch[1])} sessionId={decodeURIComponent(vibeMatch[2])} />;
+  if (agentMatch) {
+    view = <VibeThread runner={agentMatch[1] as "vibe" | "codex" | "claude"} scope={decodeURIComponent(agentMatch[2])} sessionId={decodeURIComponent(agentMatch[3])} />;
+  } else if (vibeMatch) {
+    view = <VibeThread runner="vibe" scope={decodeURIComponent(vibeMatch[1])} sessionId={decodeURIComponent(vibeMatch[2])} />;
   } else if (chatMatch) view = <Chat conversationId={decodeURIComponent(chatMatch[1])} />;
   else if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
   else if (loopMatch) view = <LoopDetail loopId={loopMatch[1]} />;

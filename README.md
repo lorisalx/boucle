@@ -13,7 +13,7 @@ The workflow is capture → tickets → loops → brain. SQLite stores tickets, 
 | Chat and tools | Selected OpenAI-compatible HTTP provider with a local tool relay | Conversations and messages in SQLite |
 | Embeddings | Selected provider embedding endpoint with lexical fallback | Model-scoped vectors in SQLite |
 | Transcription | Selected provider audio transcription endpoint | Audio is sent for transcription, then the text enters capture |
-| Agent loops | Vibe CLI with Boucle's MCP tools | Schedules, transcripts, and reported costs |
+| Agent loops | Vibe, Codex, or Claude CLI with Boucle's MCP tools | Schedules, runner overrides, transcripts, and reported costs |
 | Brain | Markdown project and meeting notes with hybrid search | Files under `BOUCLE_BRAIN_DIR` |
 
 ## Providers
@@ -23,7 +23,13 @@ The workflow is capture → tickets → loops → brain. SQLite stores tickets, 
 | `mistral` or unset | Mistral | Yes | Yes | Yes |
 | `openai` | OpenAI, Ollama, OpenRouter, vLLM, and compatible gateways | Yes | When the endpoint exists | When the endpoint exists |
 
-Mistral is the default. Agent loops use Vibe CLI in both provider modes.
+Mistral is the default provider. Vibe is the default loop runner. Provider and runner selection are independent.
+
+| Runner | Binary | Session cost |
+|---|---|---|
+| `vibe` | `vibe` | Reported by Vibe |
+| `codex` | `codex` | `n/a` when the Codex session does not expose cost |
+| `claude` | `claude` | Reported by Claude's JSON result |
 
 ## Quickstart
 

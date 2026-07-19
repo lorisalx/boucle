@@ -2,6 +2,7 @@
 
 export type SettingSource = "meta" | "env" | "default";
 export type ProviderName = "mistral" | "openai";
+export type RunnerName = "vibe" | "codex" | "claude";
 
 export interface SettingsStore {
   getMeta(key: string): string | null;
@@ -21,12 +22,22 @@ export interface ResolvedSettings {
   readonly embedModel: ResolvedSetting<string>;
   readonly transcribeModel: ResolvedSetting<string>;
   readonly openaiBaseUrl: ResolvedSetting<string>;
+  readonly runner: ResolvedSetting<RunnerName>;
+  readonly t3codeUrl: ResolvedSetting<string>;
+  readonly t3codeToken: ResolvedSetting<string>;
+  readonly t3codeProject: ResolvedSetting<string>;
 }
 
 export interface ResolvedIdentitySettings {
   readonly appName: ResolvedSetting<string>;
   readonly ownerName: ResolvedSetting<string>;
   readonly orgName: ResolvedSetting<string>;
+}
+
+export interface ResolvedT3CodeSettings {
+  readonly t3codeUrl: ResolvedSetting<string>;
+  readonly t3codeToken: ResolvedSetting<string>;
+  readonly t3codeProject: ResolvedSetting<string>;
 }
 
 export const CONFIGURABLE_SETTING_KEYS = [
@@ -38,6 +49,10 @@ export const CONFIGURABLE_SETTING_KEYS = [
   "embedModel",
   "transcribeModel",
   "openaiBaseUrl",
+  "runner",
+  "t3codeUrl",
+  "t3codeToken",
+  "t3codeProject",
 ] as const;
 
 export type ConfigurableSettingKey = (typeof CONFIGURABLE_SETTING_KEYS)[number];
@@ -51,11 +66,28 @@ function stringSetting(store: SettingsStore | null, key: string, envName: string
   return { value: fallback, source: "default" };
 }
 
+export function resolveRunnerSetting(store: SettingsStore | null): ResolvedSetting<RunnerName> {
+  const raw = stringSetting(store, "runner", "BOUCLE_RUNNER", "vibe");
+  const value = raw.value.toLowerCase();
+  if (value !== "vibe" && value !== "codex" && value !== "claude") {
+    throw new Error(`Unsupported BOUCLE_RUNNER: ${value || "(empty)"}.`);
+  }
+  return { value, source: raw.source };
+}
+
 export function resolveIdentitySettings(store: SettingsStore | null, demoMode: boolean): ResolvedIdentitySettings {
   return {
     appName: stringSetting(store, "appName", "BOUCLE_APP_NAME", "Boucle"),
     ownerName: stringSetting(store, "ownerName", "BOUCLE_OWNER_NAME", demoMode ? "Nora Bellier" : ""),
     orgName: stringSetting(store, "orgName", "BOUCLE_ORG_NAME", demoMode ? "Brumeline" : ""),
+  };
+}
+
+export function resolveT3CodeSettings(store: SettingsStore | null): ResolvedT3CodeSettings {
+  return {
+    t3codeUrl: stringSetting(store, "t3codeUrl", "BOUCLE_T3CODE_URL", ""),
+    t3codeToken: stringSetting(store, "t3codeToken", "BOUCLE_T3CODE_TOKEN", ""),
+    t3codeProject: stringSetting(store, "t3codeProject", "BOUCLE_T3CODE_PROJECT", ""),
   };
 }
 
@@ -67,14 +99,17 @@ export function resolveSettings(store: SettingsStore | null, demoMode: boolean):
     throw new Error(`Unsupported BOUCLE_PROVIDER: ${providerValue || "(empty)"}.`);
   }
   const provider: ResolvedSetting<ProviderName> = { value: providerValue, source: rawProvider.source };
+  const runner = resolveRunnerSetting(store);
   const mistral = provider.value === "mistral";
   return {
     ...identity,
+    ...resolveT3CodeSettings(store),
     provider,
     chatModel: stringSetting(store, "chatModel", "BOUCLE_CHAT_MODEL", mistral ? "mistral-medium-3.5" : ""),
     embedModel: stringSetting(store, "embedModel", "BOUCLE_EMBED_MODEL", mistral ? "mistral-embed" : "text-embedding-3-small"),
     transcribeModel: stringSetting(store, "transcribeModel", "BOUCLE_TRANSCRIBE_MODEL", mistral ? "voxtral-mini-latest" : "whisper-1"),
     openaiBaseUrl: stringSetting(store, "openaiBaseUrl", "OPENAI_BASE_URL", "https://api.openai.com/v1"),
+    runner,
   };
 }
 
@@ -101,6 +136,9 @@ export function parseSettingsUpdate(value: unknown): SettingsUpdate {
   }
   if (update.provider !== undefined && update.provider !== "mistral" && update.provider !== "openai") {
     throw new Error("provider must be one of: mistral, openai.");
+  }
+  if (update.runner !== undefined && update.runner !== "vibe" && update.runner !== "codex" && update.runner !== "claude") {
+    throw new Error("runner must be one of: vibe, codex, claude.");
   }
   return update;
 }

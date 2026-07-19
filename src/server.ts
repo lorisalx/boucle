@@ -32,11 +32,13 @@ import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
 import {
   appendBrainMessage,
   appendMessage,
+  buildTicketChatPrompt,
   getTranscript,
   spawnChat,
   spawnProjectChat,
   startBrainChat,
 } from "./chat.ts";
+import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -54,7 +56,8 @@ import { BrainSearch } from "./search.ts";
 import { VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
 import { getProvider, invalidateProvider } from "./providers/index.ts";
 import type { Provider } from "./providers/types.ts";
-import { getAgentRunner, type AgentRunner } from "./runner.ts";
+import { getAgentRunner } from "./runner.ts";
+import type { RunnerName } from "./settings.ts";
 import {
   CONFIGURABLE_SETTING_KEYS,
   parseSettingsUpdate,
@@ -66,13 +69,12 @@ import {
 } from "./settings.ts";
 
 let provider: Provider;
-let runner: AgentRunner;
 const dbPath = resolveDbPath();
 const store = new BoucleStore(dbPath);
 getIdentity(store);
 try {
   provider = getProvider(store);
-  runner = getAgentRunner();
+  getAgentRunner(null, store);
 } catch (error) {
   process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
@@ -81,7 +83,7 @@ try {
 const search = new BrainSearch(dbPath, store);
 initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
-const scheduler = new LoopScheduler(store, dbPath, runner);
+const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
@@ -275,7 +277,7 @@ app.post("/api/loop-state", async (c) => {
   return c.json({ enabled: body.enabled });
 });
 
-// Loops — BOUCLE owns N scheduled Vibe runs.
+// Loops: Boucle owns N scheduled agent runs.
 const withRunState = (loop: ReturnType<typeof store.getLoop>, includeBudget = true) => {
   if (!loop) return loop;
   if (!includeBudget) return { ...loop, isRunning: scheduler.isRunning(loop.loopId) };
@@ -342,8 +344,21 @@ app.get("/api/vibe/:scope/:sessionId", async (c) => {
   const scope = c.req.param("scope");
   const sessionId = c.req.param("sessionId");
   if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid Vibe scope or session id" }, 400);
-  const transcript = await runner.readTranscript(process.cwd(), scope, sessionId);
+  const transcript = await getAgentRunner("vibe", store).readTranscript(process.cwd(), scope, sessionId);
   if (!transcript) return c.json({ error: "Vibe session not found" }, 404);
+  return c.json({ ...transcript, running: scheduler.isVibeRunning(scope) });
+});
+
+app.get("/api/agents/:runner/:scope/:sessionId", async (c) => {
+  const runnerName = c.req.param("runner") as RunnerName;
+  const scope = c.req.param("scope");
+  const sessionId = c.req.param("sessionId");
+  if (runnerName !== "vibe" && runnerName !== "codex" && runnerName !== "claude") {
+    return c.json({ error: "invalid agent runner" }, 400);
+  }
+  if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid agent scope or session id" }, 400);
+  const transcript = await getAgentRunner(runnerName, store).readTranscript(process.cwd(), scope, sessionId);
+  if (!transcript) return c.json({ error: `${runnerName} session not found` }, 404);
   return c.json({ ...transcript, running: scheduler.isVibeRunning(scope) });
 });
 
@@ -356,7 +371,7 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { message?: string };
   const message = (body.message ?? "").trim();
   if (!message) return c.json({ error: "message required" }, 400);
-  if (!(await runner.readTranscript(process.cwd(), scope, sessionId))) {
+  if (!(await getAgentRunner("vibe", store).readTranscript(process.cwd(), scope, sessionId))) {
     return c.json({ error: "Vibe session not found" }, 404);
   }
   try {
@@ -386,6 +401,12 @@ function settingsResponse() {
     embedModel: settings.embedModel.value,
     transcribeModel: settings.transcribeModel.value,
     openaiBaseUrl: settings.openaiBaseUrl.value,
+    runner: settings.runner.value,
+    t3codeUrl: settings.t3codeUrl.value,
+    t3codeToken: "",
+    t3codeTokenPresent: Boolean(settings.t3codeToken.value),
+    t3codeProject: settings.t3codeProject.value,
+    t3codeConfigured: Boolean(settings.t3codeUrl.value && settings.t3codeToken.value && settings.t3codeProject.value),
     providerConfigured: provider.isConfigured(),
     mistralApiKeyPresent: (process.env.MISTRAL_API_KEY ?? "").trim().length > 0,
     openaiApiKeyPresent: (process.env.OPENAI_API_KEY ?? "").trim().length > 0,
@@ -421,6 +442,28 @@ app.post("/api/tickets/:id/spawn-chat", async (c) => {
   try {
     const result = await spawnChat(store, ticket);
     return c.json(result);
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+});
+
+app.post("/api/tickets/:id/spawn-t3code", async (c) => {
+  const config = getT3CodeConfig(store);
+  if (!config) return c.json({ error: "t3code is not configured" }, 404);
+  const ticket = store.getById(c.req.param("id"));
+  if (!ticket) return c.json({ error: "ticket not found" }, 404);
+  try {
+    const result = await spawnT3CodeChat(config, {
+      title: ticket.title,
+      prompt: buildTicketChatPrompt(ticket),
+    });
+    const storedThreadId = `t3code:${result.threadId}`;
+    store.setFields({
+      ticketId: ticket.ticketId,
+      t3codeThreadId: storedThreadId,
+      t3codeOpenUrl: result.openUrl,
+    });
+    return c.json({ ...result, threadId: storedThreadId });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
@@ -506,7 +549,7 @@ function buildRoutePrompt(t: Ticket): string {
 }
 
 // Smart capture — paste raw text (a Slack message, meeting notes…); a one-shot
-// Vibe run splits it into typed items, routes them to projects, and merges with
+// Agent run splits it into typed items, routes them to projects, and merges with
 // existing open tickets instead of duplicating. Async: poll GET /api/capture/smart.
 function startSmartCapture(text: string, project: string | null): { ok: true; batchId: string } {
   const batchId = randomUUID().slice(0, 8);
@@ -533,7 +576,7 @@ app.post("/api/capture/voice", async (c) => {
   if (!isProviderConfigured()) return c.json({ error: `${provider.name.toUpperCase()}_API_KEY is not configured.` }, 400);
   if (!provider.supportsTranscription()) return c.json({ error: `${provider.name} transcription is not supported.` }, 400);
   try {
-    scheduler.assertVibeBudget();
+    scheduler.assertAgentBudget();
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
   }
@@ -608,7 +651,7 @@ app.post("/api/tickets/:id/enrich", async (c) => {
   return c.json({ ok: true }, 202);
 });
 
-/** Prompt for a one-shot Vibe run that re-investigates a ticket with a human correction note. */
+/** Prompt for a one-shot agent run that re-investigates a ticket with a human correction note. */
 function buildEnrichPrompt(t: Ticket, note: string): string {
   const identity = getIdentity();
   const brainDir = resolveBrainDir();

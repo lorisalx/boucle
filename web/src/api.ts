@@ -42,6 +42,8 @@ export interface Ticket {
   snoozedUntil: string | null;
   nextAction: string | null;
   threadId: string | null;
+  t3codeThreadId: string | null;
+  t3codeOpenUrl: string | null;
   workRef: string | null;
   dedupeKey: string;
   createdAt: string;
@@ -68,6 +70,12 @@ export interface Settings {
   embedModel: string;
   transcribeModel: string;
   openaiBaseUrl: string;
+  runner: RunnerName;
+  t3codeUrl: string;
+  t3codeToken: string;
+  t3codeTokenPresent: boolean;
+  t3codeProject: string;
+  t3codeConfigured: boolean;
   providerConfigured: boolean;
   mistralApiKeyPresent: boolean;
   openaiApiKeyPresent: boolean;
@@ -77,6 +85,7 @@ export interface Settings {
 }
 
 export type SettingSource = "meta" | "env" | "default";
+export type RunnerName = "vibe" | "codex" | "claude";
 export type SettingsField =
   | "appName"
   | "ownerName"
@@ -85,7 +94,11 @@ export type SettingsField =
   | "chatModel"
   | "embedModel"
   | "transcribeModel"
-  | "openaiBaseUrl";
+  | "openaiBaseUrl"
+  | "runner"
+  | "t3codeUrl"
+  | "t3codeToken"
+  | "t3codeProject";
 export type SettingsUpdate = Partial<Record<SettingsField, string>>;
 
 export interface ChatEntry {
@@ -197,6 +210,7 @@ export interface Loop {
   codexHome: string | null;
   profile: string | null;
   model: string | null;
+  runner: RunnerName | null;
   threadId: string | null;
   threadProject: string | null;
   threadOpenUrl: string | null;
@@ -221,6 +235,7 @@ export interface LoopRun {
   trigger: "schedule" | "manual" | "smart_capture" | "enrich" | "vibe_thread";
   costUsd: number | null;
   sessionId: string | null;
+  runner: RunnerName | null;
 }
 
 export type LoopInput = Partial<Omit<Loop, "loopId" | "lastRunAt" | "lastStatus" | "createdAt" | "updatedAt" | "isRunning">> & {
@@ -286,6 +301,10 @@ export const api = {
     post(`/api/tickets/${id}/set`, fields).then((r) => json<Ticket>(r)),
   spawnChat: (id: string) =>
     post(`/api/tickets/${id}/spawn-chat`, {}).then((r) =>
+      json<{ threadId: string; project: string; openUrl: string }>(r),
+    ),
+  spawnT3Code: (id: string) =>
+    post(`/api/tickets/${id}/spawn-t3code`, {}).then((r) =>
       json<{ threadId: string; project: string; openUrl: string }>(r),
     ),
   createEpic: (input: {
@@ -358,6 +377,12 @@ export const api = {
     send: (scope: string, sessionId: string, message: string) =>
       post(`/api/vibe/${encodeURIComponent(scope)}/${encodeURIComponent(sessionId)}/send`, { message }).then((r) =>
         json<{ ok: boolean; running: boolean }>(r),
+      ),
+  },
+  agents: {
+    get: (runner: RunnerName, scope: string, sessionId: string) =>
+      fetch(`/api/agents/${runner}/${encodeURIComponent(scope)}/${encodeURIComponent(sessionId)}`).then((r) =>
+        json<VibeTranscript>(r),
       ),
   },
   mcpInfo: () =>

@@ -49,10 +49,17 @@ export function Settings() {
     transcribeModel: settings.transcribeModel,
     openaiBaseUrl: settings.openaiBaseUrl,
   });
+  const [runnerForm, setRunnerForm] = useState({
+    runner: settings.runner,
+    t3codeUrl: settings.t3codeUrl,
+    t3codeToken: settings.t3codeToken,
+    t3codeProject: settings.t3codeProject,
+  });
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<"identity" | "provider" | null>(null);
-  const [saved, setSaved] = useState<"identity" | "provider" | null>(null);
+  const [runnerError, setRunnerError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<"identity" | "provider" | "runner" | null>(null);
+  const [saved, setSaved] = useState<"identity" | "provider" | "runner" | null>(null);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -65,14 +72,20 @@ export function Settings() {
       transcribeModel: settings.transcribeModel,
       openaiBaseUrl: settings.openaiBaseUrl,
     });
+    setRunnerForm({
+      runner: settings.runner,
+      t3codeUrl: settings.t3codeUrl,
+      t3codeToken: settings.t3codeToken,
+      t3codeProject: settings.t3codeProject,
+    });
   }, [settings]);
 
   useEffect(() => {
     api.mcpInfo().then(setMcp).catch(() => {});
   }, []);
 
-  const save = async (card: "identity" | "provider", update: SettingsUpdate) => {
-    const setError = card === "identity" ? setIdentityError : setProviderError;
+  const save = async (card: "identity" | "provider" | "runner", update: SettingsUpdate) => {
+    const setError = card === "identity" ? setIdentityError : card === "provider" ? setProviderError : setRunnerError;
     setError(null);
     setSaving(card);
     setSaved(null);
@@ -97,6 +110,11 @@ export function Settings() {
   };
 
   const source = (field: SettingsField) => settings.sources[field];
+  const saveRunner = () => {
+    const update: SettingsUpdate = { ...runnerForm };
+    if (settings.t3codeTokenPresent && !runnerForm.t3codeToken.trim()) delete update.t3codeToken;
+    void save("runner", update);
+  };
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
@@ -206,11 +224,71 @@ export function Settings() {
           {providerError ? <p role="alert" className="mt-3 text-xs text-danger">{providerError}</p> : null}
         </Card>
 
+        <Card title="Loops runner" description="Choose the CLI used by default and optionally connect ticket chats to t3code.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Default runner" source={source("runner")}>
+              <select
+                className={INPUT}
+                value={runnerForm.runner}
+                onChange={(event) => setRunnerForm((value) => ({
+                  ...value,
+                  runner: event.target.value as "vibe" | "codex" | "claude",
+                }))}
+              >
+                <option value="vibe">Vibe</option>
+                <option value="codex">Codex</option>
+                <option value="claude">Claude</option>
+              </select>
+            </Field>
+            <Field label="t3code project" source={source("t3codeProject")}>
+              <input
+                className={INPUT}
+                value={runnerForm.t3codeProject}
+                placeholder="Folder name or slug"
+                onChange={(event) => setRunnerForm((value) => ({ ...value, t3codeProject: event.target.value }))}
+              />
+            </Field>
+            <Field label="t3code URL" source={source("t3codeUrl")}>
+              <input
+                className={INPUT}
+                value={runnerForm.t3codeUrl}
+                placeholder="https://t3code.example"
+                onChange={(event) => setRunnerForm((value) => ({ ...value, t3codeUrl: event.target.value }))}
+              />
+            </Field>
+            <Field label="t3code token" source={source("t3codeToken")}>
+              <input
+                className={INPUT}
+                type="password"
+                value={runnerForm.t3codeToken}
+                placeholder={settings.t3codeTokenPresent ? "Configured; leave blank to keep" : "Bearer token"}
+                autoComplete="off"
+                onChange={(event) => setRunnerForm((value) => ({ ...value, t3codeToken: event.target.value }))}
+              />
+            </Field>
+          </div>
+          <p className="mt-2 text-[11px] text-dim">
+            t3code requires URL, token, and project. The token is write-only after saving.
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <Button disabled={saving !== null} onClick={saveRunner}>
+              {saving === "runner" ? "Saving…" : "Save runner"}
+            </Button>
+            {settings.t3codeTokenPresent ? (
+              <Button disabled={saving !== null} variant="outline" onClick={() => void save("runner", { t3codeToken: "" })}>
+                Clear t3code token
+              </Button>
+            ) : null}
+            {saved === "runner" ? <span className="text-xs text-success">Saved.</span> : null}
+          </div>
+          {runnerError ? <p role="alert" className="mt-3 text-xs text-danger">{runnerError}</p> : null}
+        </Card>
+
         <div className="border-t border-border pt-6">
-          <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for Vibe</h2>
+          <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for agent CLIs</h2>
           <p className="mb-3 text-xs text-muted">
             Boucle serves its ticket tools over MCP. Loop runs get this wired automatically; to point your own
-            Vibe session at Boucle, add this to its <code className="font-mono text-muted">config.toml</code>
+            agent session at Boucle, use this endpoint in the CLI&apos;s MCP configuration
             (HTTP needs the server running; stdio works headless).
           </p>
           {mcp ? (

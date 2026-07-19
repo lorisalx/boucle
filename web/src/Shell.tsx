@@ -35,7 +35,7 @@ function activeHash(hash: string): string {
   return "#/";
 }
 
-/** Cumulative vibe spend, refreshed once a minute. The ramp appears here and only here. */
+/** Cumulative agent spend, refreshed once a minute. The ramp appears here and only here. */
 function BudgetMeter({ warnUsd, stopUsd }: { warnUsd: number; stopUsd: number }) {
   const [spend, setSpend] = useState<number | null>(null);
   const [warning, setWarning] = useState<string | null>(null);

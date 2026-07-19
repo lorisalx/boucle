@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { resolveBrainDir } from "./config.ts";
 import { getIdentity, type Identity } from "./identity.ts";
+import type { RunnerName } from "./settings.ts";
 
 export type TicketStatus =
   | "inbox"
@@ -80,6 +81,8 @@ export interface Ticket {
   snoozedUntil: string | null;
   nextAction: string | null;
   threadId: string | null;
+  t3codeThreadId: string | null;
+  t3codeOpenUrl: string | null;
   /** A pointer to the work that resolved this — e.g. a resumable agent session or PR URL. */
   workRef: string | null;
   dedupeKey: string;
@@ -122,6 +125,8 @@ export interface UpsertTicketInput {
   dueAt?: string | null;
   nextAction?: string | null;
   threadId?: string | null;
+  t3codeThreadId?: string | null;
+  t3codeOpenUrl?: string | null;
   createdBy?: TicketCreatedBy;
 }
 
@@ -138,6 +143,8 @@ export interface SetTicketFieldsInput {
   dueAt?: string | null;
   nextAction?: string | null;
   threadId?: string | null;
+  t3codeThreadId?: string | null;
+  t3codeOpenUrl?: string | null;
   workRef?: string | null;
 }
 
@@ -196,7 +203,7 @@ export interface ProjectMeta {
 }
 
 // ===============================
-// Loops — scheduled Vibe runs that BOUCLE owns
+// Loops — scheduled agent runs that Boucle owns
 // ===============================
 
 export type LoopRunStatus = "running" | "ok" | "error" | "timeout";
@@ -206,7 +213,7 @@ export interface Loop {
   loopId: string;
   name: string;
   description: string;
-  /** The full instructions handed to Vibe CLI as the prompt. */
+  /** The full instructions handed to the selected agent runner as the prompt. */
   prompt: string;
   enabled: boolean;
   /** Minimum minutes between runs. */
@@ -224,7 +231,9 @@ export interface Loop {
   profile: string | null;
   /** `codex -m <model>`; null uses the profile default. */
   model: string | null;
-  /** Persistent Vibe session used for this loop's scheduled/manual runs. */
+  /** Per-loop runner override; null uses the global setting. */
+  runner: RunnerName | null;
+  /** Persistent runner session used for this loop's scheduled/manual runs. */
   threadId: string | null;
   threadProject: string | null;
   threadOpenUrl: string | null;
@@ -245,6 +254,7 @@ export interface LoopRun {
   trigger: LoopRunTrigger;
   costUsd: number | null;
   sessionId: string | null;
+  runner: RunnerName | null;
 }
 
 export interface LoopCostSummary {
@@ -266,6 +276,7 @@ export interface CreateLoopInput {
   codexHome?: string | null;
   profile?: string | null;
   model?: string | null;
+  runner?: RunnerName | null;
 }
 
 export interface UpdateLoopInput {
@@ -282,6 +293,7 @@ export interface UpdateLoopInput {
   codexHome?: string | null;
   profile?: string | null;
   model?: string | null;
+  runner?: RunnerName | null;
   threadId?: string | null;
   threadProject?: string | null;
   threadOpenUrl?: string | null;
@@ -315,7 +327,7 @@ const TICKET_COLUMNS = `
   ticket_id AS ticketId, title, body, status, priority, kind, bucket, score, project, source,
   source_ref AS sourceRef, permalink, requester, needs, effort,
   due_at AS dueAt, snoozed_until AS snoozedUntil, next_action AS nextAction,
-  thread_id AS threadId,
+  thread_id AS threadId, t3code_thread_id AS t3codeThreadId, t3code_open_url AS t3codeOpenUrl,
   work_ref AS workRef,
   dedupe_key AS dedupeKey, created_at AS createdAt, updated_at AS updatedAt, created_by AS createdBy
 `;
@@ -330,7 +342,7 @@ const LOOP_COLUMNS = `
   loop_id AS loopId, name, description, prompt, enabled,
   interval_minutes AS intervalMinutes, active_days AS activeDays,
   active_start_hour AS activeStartHour, active_end_hour AS activeEndHour,
-  timezone, codex_home AS codexHome, profile, model,
+  timezone, codex_home AS codexHome, profile, model, runner,
   thread_id AS threadId, thread_project AS threadProject, thread_open_url AS threadOpenUrl,
   last_run_at AS lastRunAt, last_status AS lastStatus,
   created_at AS createdAt, updated_at AS updatedAt
@@ -340,6 +352,11 @@ type RawLoop = Omit<Loop, "enabled"> & { enabled: number };
 
 function toLoop(row: RawLoop): Loop {
   return { ...row, enabled: row.enabled === 1 };
+}
+
+function validatedRunner(value: RunnerName | null): RunnerName | null {
+  if (value === null || value === "vibe" || value === "codex" || value === "claude") return value;
+  throw new Error("runner must be one of: vibe, codex, claude, or null.");
 }
 
 /** Default chief-of-staff heartbeat loop prompt, seeded (interpolated) on first boot. */
@@ -893,7 +910,8 @@ export class BoucleStore {
         bucket TEXT, score REAL NOT NULL DEFAULT 0,
         project TEXT, source TEXT NOT NULL, source_ref TEXT, permalink TEXT, requester TEXT,
         needs TEXT NOT NULL DEFAULT 'human', effort TEXT, due_at TEXT, snoozed_until TEXT,
-        next_action TEXT, thread_id TEXT, work_ref TEXT, dedupe_key TEXT NOT NULL UNIQUE,
+        next_action TEXT, thread_id TEXT, t3code_thread_id TEXT, t3code_open_url TEXT,
+        work_ref TEXT, dedupe_key TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT 'chief'
       );
       CREATE INDEX IF NOT EXISTS idx_tickets_status_score ON tickets(status, score DESC);
@@ -914,13 +932,14 @@ export class BoucleStore {
         interval_minutes INTEGER NOT NULL DEFAULT 60, active_days TEXT NOT NULL DEFAULT '',
         active_start_hour INTEGER NOT NULL DEFAULT 0, active_end_hour INTEGER NOT NULL DEFAULT 0,
         timezone TEXT NOT NULL DEFAULT 'Europe/Paris', codex_home TEXT, profile TEXT, model TEXT,
+        runner TEXT,
         thread_id TEXT, thread_project TEXT, thread_open_url TEXT,
         last_run_at TEXT, last_status TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS loop_runs (
         run_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
         status TEXT NOT NULL, exit_code INTEGER, summary TEXT NOT NULL DEFAULT '',
-        trigger TEXT NOT NULL DEFAULT 'schedule', cost_usd REAL, session_id TEXT
+        trigger TEXT NOT NULL DEFAULT 'schedule', cost_usd REAL, session_id TEXT, runner TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_loop_runs_loop ON loop_runs(loop_id, started_at DESC);
       CREATE TABLE IF NOT EXISTS project_meta (
@@ -951,6 +970,12 @@ export class BoucleStore {
     if (!cols.some((c) => c.name === "work_ref")) {
       this.db.exec(`ALTER TABLE tickets ADD COLUMN work_ref TEXT`);
     }
+    if (!cols.some((c) => c.name === "t3code_thread_id")) {
+      this.db.exec(`ALTER TABLE tickets ADD COLUMN t3code_thread_id TEXT`);
+    }
+    if (!cols.some((c) => c.name === "t3code_open_url")) {
+      this.db.exec(`ALTER TABLE tickets ADD COLUMN t3code_open_url TEXT`);
+    }
     if (!cols.some((c) => c.name === "kind")) {
       this.db.exec(`ALTER TABLE tickets ADD COLUMN kind TEXT NOT NULL DEFAULT 'task'`);
     }
@@ -976,12 +1001,20 @@ export class BoucleStore {
     if (!loopCols.some((c) => c.name === "thread_open_url")) {
       this.db.exec(`ALTER TABLE loops ADD COLUMN thread_open_url TEXT`);
     }
+    if (!loopCols.some((c) => c.name === "runner")) {
+      this.db.exec(`ALTER TABLE loops ADD COLUMN runner TEXT`);
+    }
     const runCols = this.db.prepare(`PRAGMA table_info(loop_runs)`).all() as Array<{ name: string }>;
     if (!runCols.some((c) => c.name === "cost_usd")) {
       this.db.exec(`ALTER TABLE loop_runs ADD COLUMN cost_usd REAL`);
     }
     if (!runCols.some((c) => c.name === "session_id")) {
       this.db.exec(`ALTER TABLE loop_runs ADD COLUMN session_id TEXT`);
+    }
+    if (!runCols.some((c) => c.name === "runner")) {
+      this.db.exec(`ALTER TABLE loop_runs ADD COLUMN runner TEXT`);
+      // Every run recorded before multi-runner support came from Vibe.
+      this.db.exec(`UPDATE loop_runs SET runner = 'vibe' WHERE runner IS NULL`);
     }
     // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
     this.db.exec(`
@@ -1199,6 +1232,8 @@ export class BoucleStore {
       snoozedUntil: existing?.snoozedUntil ?? null,
       nextAction: input.nextAction ?? existing?.nextAction ?? null,
       threadId: existing?.threadId ?? input.threadId ?? null,
+      t3codeThreadId: existing?.t3codeThreadId ?? input.t3codeThreadId ?? null,
+      t3codeOpenUrl: existing?.t3codeOpenUrl ?? input.t3codeOpenUrl ?? null,
       workRef: existing?.workRef ?? null,
       dedupeKey: input.dedupeKey,
       createdAt: existing?.createdAt ?? nowIso,
@@ -1217,13 +1252,14 @@ export class BoucleStore {
     ticket.score = computeScore(ticket, nowMs);
     this.db
       .prepare(
-        `INSERT INTO tickets (ticket_id,title,body,status,priority,kind,bucket,score,project,source,source_ref,permalink,requester,needs,effort,due_at,snoozed_until,next_action,thread_id,work_ref,dedupe_key,created_at,updated_at,created_by)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO tickets (ticket_id,title,body,status,priority,kind,bucket,score,project,source,source_ref,permalink,requester,needs,effort,due_at,snoozed_until,next_action,thread_id,t3code_thread_id,t3code_open_url,work_ref,dedupe_key,created_at,updated_at,created_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         ticket.ticketId, ticket.title, ticket.body, ticket.status, ticket.priority, ticket.kind, ticket.bucket, ticket.score,
         ticket.project, ticket.source, ticket.sourceRef, ticket.permalink, ticket.requester, ticket.needs,
         ticket.effort, ticket.dueAt, ticket.snoozedUntil, ticket.nextAction, ticket.threadId,
+        ticket.t3codeThreadId, ticket.t3codeOpenUrl,
         ticket.workRef, ticket.dedupeKey, ticket.createdAt,
         ticket.updatedAt, ticket.createdBy,
       );
@@ -1234,11 +1270,12 @@ export class BoucleStore {
   private writeTicket(t: Ticket): void {
     this.db
       .prepare(
-        `UPDATE tickets SET title=?,body=?,status=?,priority=?,kind=?,bucket=?,score=?,project=?,source=?,source_ref=?,permalink=?,requester=?,needs=?,effort=?,due_at=?,snoozed_until=?,next_action=?,thread_id=?,work_ref=?,created_by=?,updated_at=? WHERE ticket_id=?`,
+        `UPDATE tickets SET title=?,body=?,status=?,priority=?,kind=?,bucket=?,score=?,project=?,source=?,source_ref=?,permalink=?,requester=?,needs=?,effort=?,due_at=?,snoozed_until=?,next_action=?,thread_id=?,t3code_thread_id=?,t3code_open_url=?,work_ref=?,created_by=?,updated_at=? WHERE ticket_id=?`,
       )
       .run(
         t.title, t.body, t.status, t.priority, t.kind, t.bucket, t.score, t.project, t.source, t.sourceRef, t.permalink,
         t.requester, t.needs, t.effort, t.dueAt, t.snoozedUntil, t.nextAction, t.threadId,
+        t.t3codeThreadId, t.t3codeOpenUrl,
         t.workRef, t.createdBy, t.updatedAt, t.ticketId,
       );
     this.searchIndexer?.reindexTicket(t.ticketId);
@@ -1290,6 +1327,8 @@ export class BoucleStore {
       dueAt: input.dueAt !== undefined ? input.dueAt : prev.dueAt,
       nextAction: input.nextAction !== undefined ? input.nextAction : prev.nextAction,
       threadId: input.threadId !== undefined ? input.threadId : prev.threadId,
+      t3codeThreadId: input.t3codeThreadId !== undefined ? input.t3codeThreadId : prev.t3codeThreadId,
+      t3codeOpenUrl: input.t3codeOpenUrl !== undefined ? input.t3codeOpenUrl : prev.t3codeOpenUrl,
       workRef: input.workRef !== undefined ? input.workRef : prev.workRef,
       updatedAt: iso,
     };
@@ -1442,7 +1481,8 @@ export class BoucleStore {
       timezone: input.timezone ?? "Europe/Paris",
       codexHome: input.codexHome ?? null,
       profile: input.profile ?? null,
-      model: input.model ?? "devstral-2512",
+      model: input.model === undefined ? "devstral-2512" : input.model,
+      runner: validatedRunner(input.runner ?? null),
       threadId: null,
       threadProject: null,
       threadOpenUrl: null,
@@ -1453,13 +1493,13 @@ export class BoucleStore {
     };
     this.db
       .prepare(
-        `INSERT INTO loops (loop_id,name,description,prompt,enabled,interval_minutes,active_days,active_start_hour,active_end_hour,timezone,codex_home,profile,model,thread_id,thread_project,thread_open_url,last_run_at,last_status,created_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO loops (loop_id,name,description,prompt,enabled,interval_minutes,active_days,active_start_hour,active_end_hour,timezone,codex_home,profile,model,runner,thread_id,thread_project,thread_open_url,last_run_at,last_status,created_at,updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         loop.loopId, loop.name, loop.description, loop.prompt, loop.enabled ? 1 : 0,
         loop.intervalMinutes, loop.activeDays, loop.activeStartHour, loop.activeEndHour,
-        loop.timezone, loop.codexHome, loop.profile, loop.model, loop.threadId, loop.threadProject,
+        loop.timezone, loop.codexHome, loop.profile, loop.model, loop.runner, loop.threadId, loop.threadProject,
         loop.threadOpenUrl, loop.lastRunAt, loop.lastStatus, loop.createdAt, loop.updatedAt,
       );
     return loop;
@@ -1482,6 +1522,7 @@ export class BoucleStore {
       codexHome: input.codexHome !== undefined ? input.codexHome : prev.codexHome,
       profile: input.profile !== undefined ? input.profile : prev.profile,
       model: input.model !== undefined ? input.model : prev.model,
+      runner: input.runner !== undefined ? validatedRunner(input.runner) : prev.runner,
       threadId: input.threadId !== undefined ? input.threadId : prev.threadId,
       threadProject: input.threadProject !== undefined ? input.threadProject : prev.threadProject,
       threadOpenUrl: input.threadOpenUrl !== undefined ? input.threadOpenUrl : prev.threadOpenUrl,
@@ -1489,12 +1530,12 @@ export class BoucleStore {
     };
     this.db
       .prepare(
-        `UPDATE loops SET name=?,description=?,prompt=?,enabled=?,interval_minutes=?,active_days=?,active_start_hour=?,active_end_hour=?,timezone=?,codex_home=?,profile=?,model=?,thread_id=?,thread_project=?,thread_open_url=?,updated_at=? WHERE loop_id=?`,
+        `UPDATE loops SET name=?,description=?,prompt=?,enabled=?,interval_minutes=?,active_days=?,active_start_hour=?,active_end_hour=?,timezone=?,codex_home=?,profile=?,model=?,runner=?,thread_id=?,thread_project=?,thread_open_url=?,updated_at=? WHERE loop_id=?`,
       )
       .run(
         next.name, next.description, next.prompt, next.enabled ? 1 : 0, next.intervalMinutes,
         next.activeDays, next.activeStartHour, next.activeEndHour, next.timezone, next.codexHome,
-        next.profile, next.model, next.threadId, next.threadProject, next.threadOpenUrl, next.updatedAt,
+        next.profile, next.model, next.runner, next.threadId, next.threadProject, next.threadOpenUrl, next.updatedAt,
         next.loopId,
       );
     return next;
@@ -1534,7 +1575,7 @@ export class BoucleStore {
   }
 
   /** Open a run row (status "running") and stamp the loop's last_run_at. */
-  recordRunStart(loopId: string, trigger: LoopRunTrigger): LoopRun {
+  recordRunStart(loopId: string, trigger: LoopRunTrigger, runner: RunnerName | null = null): LoopRun {
     const run: LoopRun = {
       runId: randomUUID(),
       loopId,
@@ -1546,12 +1587,13 @@ export class BoucleStore {
       trigger,
       costUsd: null,
       sessionId: null,
+      runner,
     };
     this.db
       .prepare(
-        `INSERT INTO loop_runs (run_id,loop_id,started_at,finished_at,status,exit_code,summary,trigger,cost_usd,session_id) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO loop_runs (run_id,loop_id,started_at,finished_at,status,exit_code,summary,trigger,cost_usd,session_id,runner) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       )
-      .run(run.runId, run.loopId, run.startedAt, null, run.status, null, "", run.trigger, null, null);
+      .run(run.runId, run.loopId, run.startedAt, null, run.status, null, "", run.trigger, null, null, run.runner);
     this.db
       .prepare(`UPDATE loops SET last_run_at = ?, last_status = 'running' WHERE loop_id = ?`)
       .run(run.startedAt, loopId);
@@ -1580,7 +1622,7 @@ export class BoucleStore {
       .prepare(
         `SELECT run_id AS runId, loop_id AS loopId, started_at AS startedAt, finished_at AS finishedAt,
                 status, exit_code AS exitCode, summary, trigger,
-                cost_usd AS costUsd, session_id AS sessionId
+                cost_usd AS costUsd, session_id AS sessionId, runner
          FROM loop_runs WHERE loop_id = ? ORDER BY started_at DESC LIMIT ?`,
       )
       .all(loopId, limit) as unknown as LoopRun[];
