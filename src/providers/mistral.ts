@@ -4,7 +4,7 @@ import { OpenAICompatibleProvider } from "./openai-compat.ts";
 
 export const LEGACY_EMBED_MODEL = "mistral-embed";
 
-export function createMistralProvider(): OpenAICompatibleProvider {
+export function createMistralProvider(models?: { chat: string; embed: string; transcribe: string }): OpenAICompatibleProvider {
   return new OpenAICompatibleProvider({
     name: "mistral",
     baseUrl: "https://api.mistral.ai/v1",
@@ -14,5 +14,6 @@ export function createMistralProvider(): OpenAICompatibleProvider {
       embed: LEGACY_EMBED_MODEL,
       transcribe: "voxtral-mini-latest",
     },
+    models,
   });
 }

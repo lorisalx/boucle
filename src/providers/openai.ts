@@ -2,17 +2,23 @@
 
 import { OpenAICompatibleProvider } from "./openai-compat.ts";
 
-export function createOpenAIProvider(): OpenAICompatibleProvider {
-  const chatModel = (process.env.BOUCLE_CHAT_MODEL ?? "").trim();
+export function createOpenAIProvider(options: {
+  chatModel: string;
+  embedModel: string;
+  transcribeModel: string;
+  baseUrl: string;
+}): OpenAICompatibleProvider {
+  const chatModel = options.chatModel.trim();
   if (!chatModel) throw new Error("BOUCLE_CHAT_MODEL is required when BOUCLE_PROVIDER=openai.");
   return new OpenAICompatibleProvider({
     name: "openai",
-    baseUrl: (process.env.OPENAI_BASE_URL ?? "").trim() || "https://api.openai.com/v1",
+    baseUrl: options.baseUrl,
     apiKeyEnv: "OPENAI_API_KEY",
     defaults: {
       chat: chatModel,
       embed: "text-embedding-3-small",
       transcribe: "whisper-1",
     },
+    models: { chat: chatModel, embed: options.embedModel, transcribe: options.transcribeModel },
   });
 }

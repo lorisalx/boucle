@@ -4,16 +4,38 @@ import { createMistralProvider, LEGACY_EMBED_MODEL } from "./mistral.ts";
 import { createOpenAIProvider } from "./openai.ts";
 import type { OpenAICompatibleProvider } from "./openai-compat.ts";
 import type { Provider } from "./types.ts";
+import { resolveSettings, validateResolvedSettings, type SettingsStore } from "../settings.ts";
 
 let selected: OpenAICompatibleProvider | null = null;
+let settingsStore: SettingsStore | null = null;
 
-export function getProvider(): Provider {
+export function getProvider(store?: SettingsStore): Provider {
+  if (store && store !== settingsStore) {
+    settingsStore = store;
+    selected = null;
+  }
   if (selected) return selected;
-  const name = (process.env.BOUCLE_PROVIDER ?? "mistral").trim().toLowerCase();
-  if (name === "mistral") selected = createMistralProvider();
-  else if (name === "openai") selected = createOpenAIProvider();
-  else throw new Error(`Unsupported BOUCLE_PROVIDER: ${name || "(empty)"}.`);
+  const settings = resolveSettings(settingsStore, false);
+  validateResolvedSettings(settings);
+  if (settings.provider.value === "mistral") {
+    selected = createMistralProvider({
+      chat: settings.chatModel.value,
+      embed: settings.embedModel.value,
+      transcribe: settings.transcribeModel.value,
+    });
+  } else {
+    selected = createOpenAIProvider({
+      chatModel: settings.chatModel.value,
+      embedModel: settings.embedModel.value,
+      transcribeModel: settings.transcribeModel.value,
+      baseUrl: settings.openaiBaseUrl.value,
+    });
+  }
   return selected;
+}
+
+export function invalidateProvider(): void {
+  selected = null;
 }
 
 export function getEmbeddingModel(): string | null {

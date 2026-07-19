@@ -63,10 +63,30 @@ export interface Settings {
   orgName: string;
   demoMode: boolean;
   providerName: string;
+  provider: "mistral" | "openai";
+  chatModel: string;
+  embedModel: string;
+  transcribeModel: string;
+  openaiBaseUrl: string;
   providerConfigured: boolean;
+  mistralApiKeyPresent: boolean;
+  openaiApiKeyPresent: boolean;
+  sources: Record<SettingsField, SettingSource>;
   budgetWarnUsd: number;
   budgetStopUsd: number;
 }
+
+export type SettingSource = "meta" | "env" | "default";
+export type SettingsField =
+  | "appName"
+  | "ownerName"
+  | "orgName"
+  | "provider"
+  | "chatModel"
+  | "embedModel"
+  | "transcribeModel"
+  | "openaiBaseUrl";
+export type SettingsUpdate = Partial<Record<SettingsField, string>>;
 
 export interface ChatEntry {
   role: "user" | "assistant" | "tool";
@@ -238,6 +258,13 @@ const post = (path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const put = (path: string, body: unknown) =>
+  fetch(path, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
 export const api = {
   meta: () => fetch("/api/meta").then((r) => json<{ workdir: string }>(r)),
   search: (query: string) =>
@@ -308,6 +335,7 @@ export const api = {
   setLoopState: (enabled: boolean) =>
     post("/api/loop-state", { enabled }).then((r) => json<{ enabled: boolean }>(r)),
   settings: () => fetch("/api/settings").then((r) => json<Settings>(r)),
+  updateSettings: (update: SettingsUpdate) => put("/api/settings", update).then((r) => json<Settings>(r)),
   chat: {
     get: (conversationId: string) =>
       fetch(`/api/chats/${encodeURIComponent(conversationId)}`).then((r) => json<ChatTranscript>(r)),

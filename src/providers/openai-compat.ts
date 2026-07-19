@@ -13,6 +13,11 @@ export interface OpenAICompatibleOptions {
   readonly baseUrl: string;
   readonly apiKeyEnv: string;
   readonly defaults: ProviderDefaults;
+  readonly models?: {
+    readonly chat?: string;
+    readonly embed?: string;
+    readonly transcribe?: string;
+  };
 }
 
 interface ChatResponse {
@@ -40,11 +45,6 @@ function endpointUnavailable(error: unknown): boolean {
   return error instanceof ProviderRequestError && (error.status === 404 || error.status === 405 || error.status === 501);
 }
 
-function override(name: string, fallback: string | undefined): string | null {
-  const value = (process.env[name] ?? "").trim();
-  return value || fallback || null;
-}
-
 export class OpenAICompatibleProvider implements Provider {
   readonly name: string;
   readonly chatModel: string;
@@ -60,9 +60,9 @@ export class OpenAICompatibleProvider implements Provider {
     this.name = options.name;
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKeyEnv = options.apiKeyEnv;
-    this.chatModel = override("BOUCLE_CHAT_MODEL", options.defaults.chat) ?? "";
-    this.embedModel = override("BOUCLE_EMBED_MODEL", options.defaults.embed);
-    this.transcribeModel = override("BOUCLE_TRANSCRIBE_MODEL", options.defaults.transcribe);
+    this.chatModel = options.models?.chat ?? options.defaults.chat;
+    this.embedModel = (options.models?.embed ?? options.defaults.embed)?.trim() || null;
+    this.transcribeModel = (options.models?.transcribe ?? options.defaults.transcribe)?.trim() || null;
     this.embeddingsAvailable = this.embedModel !== null;
     this.transcriptionAvailable = this.transcribeModel !== null;
   }

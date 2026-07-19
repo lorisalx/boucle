@@ -8,24 +8,55 @@ const IDENTITY_FALLBACK: Settings = {
   orgName: "",
   demoMode: false,
   providerName: "",
+  provider: "mistral",
+  chatModel: "mistral-medium-3.5",
+  embedModel: "mistral-embed",
+  transcribeModel: "voxtral-mini-latest",
+  openaiBaseUrl: "https://api.openai.com/v1",
   providerConfigured: false,
+  mistralApiKeyPresent: false,
+  openaiApiKeyPresent: false,
+  sources: {
+    appName: "default",
+    ownerName: "default",
+    orgName: "default",
+    provider: "default",
+    chatModel: "default",
+    embedModel: "default",
+    transcribeModel: "default",
+    openaiBaseUrl: "default",
+  },
   budgetWarnUsd: 10,
   budgetStopUsd: 30,
 };
 
 let identityCache: Settings | null = null;
 let identityPromise: Promise<Settings> | null = null;
+const IDENTITY_EVENT = "boucle:identity";
+
+function publishIdentity(identity: Settings): Settings {
+  identityCache = identity;
+  window.dispatchEvent(new CustomEvent<Settings>(IDENTITY_EVENT, { detail: identity }));
+  return identity;
+}
+
+/** Refetch settings and notify every mounted identity consumer. */
+export function refreshIdentity(): Promise<Settings> {
+  identityPromise ??= api.settings().then(publishIdentity).finally(() => {
+    identityPromise = null;
+  });
+  return identityPromise;
+}
 
 /** Boucle's identity (appName/ownerName/orgName/…), fetched once and cached for the app's lifetime. */
 export function useIdentity(): Settings {
   const [identity, setIdentity] = useState<Settings>(identityCache ?? IDENTITY_FALLBACK);
   useEffect(() => {
-    if (identityCache) return;
-    identityPromise ??= api.settings();
-    identityPromise.then((s) => {
-      identityCache = s;
-      setIdentity(s);
-    }).catch(() => undefined);
+    const onIdentity = (event: Event) => setIdentity((event as CustomEvent<Settings>).detail);
+    window.addEventListener(IDENTITY_EVENT, onIdentity);
+    if (identityCache) setIdentity(identityCache);
+    else void refreshIdentity().catch(() => undefined);
+    return () => window.removeEventListener(IDENTITY_EVENT, onIdentity);
   }, []);
   return identity;
 }

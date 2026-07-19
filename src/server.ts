@@ -14,7 +14,7 @@ import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
 import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
-import { getIdentity, type Identity } from "./identity.ts";
+import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
   type CreateLoopInput,
@@ -52,22 +52,32 @@ import { listMeetings, type Meeting } from "./meetings.ts";
 import { initBrainGraph, graphSearch } from "./graph.ts";
 import { BrainSearch } from "./search.ts";
 import { VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
-import { getProvider } from "./providers/index.ts";
+import { getProvider, invalidateProvider } from "./providers/index.ts";
 import type { Provider } from "./providers/types.ts";
 import { getAgentRunner, type AgentRunner } from "./runner.ts";
+import {
+  CONFIGURABLE_SETTING_KEYS,
+  parseSettingsUpdate,
+  resolveSettings,
+  settingsWithUpdate,
+  validateResolvedSettings,
+  type ConfigurableSettingKey,
+  type ResolvedSettings,
+} from "./settings.ts";
 
 let provider: Provider;
 let runner: AgentRunner;
+const dbPath = resolveDbPath();
+const store = new BoucleStore(dbPath);
+getIdentity(store);
 try {
-  provider = getProvider();
+  provider = getProvider(store);
   runner = getAgentRunner();
 } catch (error) {
   process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 }
 
-const dbPath = resolveDbPath();
-const store = new BoucleStore(dbPath);
 const search = new BrainSearch(dbPath, store);
 initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
@@ -358,19 +368,50 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
   }
 });
 
-app.get("/api/settings", (c) => {
+function settingsResponse() {
   const identity = getIdentity();
+  const settings = resolveSettings(store, identity.demoMode);
   const budget = getAgentBudgetThresholds();
-  return c.json({
-    appName: identity.appName,
-    ownerName: identity.ownerName,
-    orgName: identity.orgName,
+  const sources = Object.fromEntries(
+    CONFIGURABLE_SETTING_KEYS.map((key) => [key, settings[key].source]),
+  ) as Record<ConfigurableSettingKey, ResolvedSettings[ConfigurableSettingKey]["source"]>;
+  return {
+    appName: settings.appName.value,
+    ownerName: settings.ownerName.value,
+    orgName: settings.orgName.value,
     demoMode: identity.demoMode,
+    provider: settings.provider.value,
     providerName: provider.name,
+    chatModel: settings.chatModel.value,
+    embedModel: settings.embedModel.value,
+    transcribeModel: settings.transcribeModel.value,
+    openaiBaseUrl: settings.openaiBaseUrl.value,
     providerConfigured: provider.isConfigured(),
+    mistralApiKeyPresent: (process.env.MISTRAL_API_KEY ?? "").trim().length > 0,
+    openaiApiKeyPresent: (process.env.OPENAI_API_KEY ?? "").trim().length > 0,
+    sources,
     budgetWarnUsd: budget.warnUsd,
     budgetStopUsd: budget.stopUsd,
-  });
+  };
+}
+
+app.get("/api/settings", (c) => c.json(settingsResponse()));
+
+app.put("/api/settings", async (c) => {
+  try {
+    const update = parseSettingsUpdate(await c.req.json().catch(() => null));
+    const candidate = settingsWithUpdate(store, update, getIdentity().demoMode);
+    validateResolvedSettings(candidate);
+    store.setMetaValues(Object.entries(update));
+    invalidateIdentity();
+    invalidateProvider();
+    getIdentity(store);
+    provider = getProvider(store);
+    search.reconfigureProvider();
+    return c.json(settingsResponse());
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 });
 
 app.post("/api/tickets/:id/spawn-chat", async (c) => {

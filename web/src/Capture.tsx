@@ -1,6 +1,5 @@
 /**
- * Quick capture — dump anything from your head into the right project with the
- * right kind, without leaving whatever page you're on. Replaces the Slack DM-to-self.
+ * Capture-first command palette: one surface for quick capture and search.
  *
  * Two paths out:
  *  - one-liner → creates a single item directly (Enter);
@@ -8,23 +7,34 @@
  *    splits it into typed items, routes them to projects, and merges with existing
  *    open tickets instead of duplicating. Async — items appear as the board polls.
  *
- * Open it from anywhere: press ⌘K, or dispatch
+ * Open it from anywhere: press Cmd/Ctrl+K, or dispatch
  *   window.dispatchEvent(new CustomEvent("boucle:capture", { detail: { project } }))
  * (project cards use this to preset their project).
  */
 import {
+  BrainIcon,
+  CalendarDaysIcon,
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
+  HistoryIcon,
   Loader2Icon,
   MicIcon,
   PlusIcon,
+  SearchIcon,
   SparklesIcon,
   SquareIcon,
+  TicketIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { api, type ProjectSummary, type TicketKind } from "./api.ts";
+import {
+  api,
+  type ProjectSummary,
+  type SearchResponse,
+  type SearchSource,
+  type TicketKind,
+} from "./api.ts";
 import { useIdentity } from "./hooks.ts";
 import {
   DropdownMenu,
@@ -33,7 +43,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button, Dot, KIND_LABEL, KIND_ORDER, KindIcon, Status, cx } from "./ui.tsx";
+import { Button, Dot, KIND_LABEL, KIND_ORDER, KindIcon, Status, Tag, cx, type Tone } from "./ui.tsx";
+
+const EMPTY_COUNTS: SearchResponse["counts"] = { ticket: 0, event: 0, meeting: 0, brain: 0 };
+const SOURCE_ORDER: SearchSource[] = ["ticket", "event", "meeting", "brain"];
+const SOURCE_META: Record<SearchSource, { label: string; heading: string; tone: Tone }> = {
+  ticket: { label: "Tickets", heading: "Tickets", tone: "info" },
+  event: { label: "Events", heading: "Events", tone: "warn" },
+  meeting: { label: "Meetings", heading: "Meetings", tone: "success" },
+  brain: { label: "Brain", heading: "Brain", tone: "neutral" },
+};
+
+function SourceIcon({ source }: { source: SearchSource }) {
+  const className = "size-4 shrink-0 text-muted";
+  if (source === "ticket") return <TicketIcon className={className} />;
+  if (source === "event") return <HistoryIcon className={className} />;
+  if (source === "meeting") return <CalendarDaysIcon className={className} />;
+  return <BrainIcon className={className} />;
+}
+
+function assignResult(url: string): void {
+  window.location.assign(url.startsWith("#") && window.location.pathname !== "/" ? `/${url}` : url);
+}
 
 /** Quiet pill chip — the base for the kind / project / describe-chat controls. */
 const CHIP =
@@ -83,6 +114,11 @@ export function CaptureModal() {
   const [chat, setChat] = useState(true);
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [response, setResponse] = useState<SearchResponse | null>(null);
+  const [filter, setFilter] = useState<SearchSource | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -93,6 +129,7 @@ export function CaptureModal() {
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discardRecordingRef = useRef(false);
   const openRef = useRef(false);
+  const requestRef = useRef(0);
 
   // A paste that reads like a blob (multi-line or long) is AI-split territory.
   const bulk = text.includes("\n") || text.trim().length > 160;
@@ -106,12 +143,25 @@ export function CaptureModal() {
       setVoiceState("idle");
       setVoiceError(null);
       setElapsedSeconds(0);
+      setSelected(null);
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
       successTimerRef.current = null;
       setOpen(true);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setProject("");
+        setKind("idea");
+        setChat(true);
+        setVoiceState("idle");
+        setVoiceError(null);
+        setElapsedSeconds(0);
+        setSelected(null);
+        setOpen(true);
+      } else if (e.key === "Escape") {
+        setOpen(false);
+      }
     };
     window.addEventListener("boucle:capture", onOpen);
     window.addEventListener("keydown", onKey);
@@ -126,6 +176,35 @@ export function CaptureModal() {
     setTimeout(() => inputRef.current?.focus(), 0);
     api.projects().then(setProjects).catch(() => {});
   }, [open]);
+
+  useEffect(() => {
+    const query = text.trim();
+    const requestId = ++requestRef.current;
+    setSearchError(null);
+    setSelected(null);
+    if (query.length < 2) {
+      setResponse(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const timer = setTimeout(() => {
+      api
+        .search(query)
+        .then((next) => {
+          if (requestRef.current === requestId) setResponse(next);
+        })
+        .catch((cause: unknown) => {
+          if (requestRef.current === requestId) {
+            setSearchError(cause instanceof Error ? cause.message : String(cause));
+          }
+        })
+        .finally(() => {
+          if (requestRef.current === requestId) setSearchLoading(false);
+        });
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [text]);
 
   useEffect(() => {
     openRef.current = open;
@@ -151,6 +230,7 @@ export function CaptureModal() {
 
   const finish = useCallback(() => {
     setText("");
+    setSelected(null);
     setOpen(false);
     window.dispatchEvent(new CustomEvent("boucle:captured"));
   }, []);
@@ -164,6 +244,11 @@ export function CaptureModal() {
         ? "Misc"
         : (projects.find((p) => p.projectId === project)?.title ?? project);
   const voiceBusy = voiceState === "requesting" || voiceState === "recording" || voiceState === "uploading";
+  const results = useMemo(() => {
+    const matching = (response?.results ?? []).filter((result) => filter === null || result.source === filter);
+    return SOURCE_ORDER.flatMap((source) => matching.filter((result) => result.source === source));
+  }, [filter, response]);
+  const actionCount = results.length + (text.trim().length > 0 ? 1 : 0);
 
   const submitOne = useCallback(() => {
     const t = text.trim().replace(/\s+/g, " ");
@@ -189,6 +274,29 @@ export function CaptureModal() {
       .catch((e) => alert(String(e.message ?? e)))
       .finally(() => setBusy(false));
   }, [text, busy, voiceBusy, resolvedProject, finish]);
+
+  const capture = useCallback(() => {
+    (bulk ? submitSmart : submitOne)();
+  }, [bulk, submitOne, submitSmart]);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setText("");
+    setSelected(null);
+  }, []);
+
+  const openResult = useCallback((url: string) => {
+    close();
+    assignResult(url);
+  }, [close]);
+
+  const askBrain = useCallback(() => {
+    const query = text.trim();
+    if (!query) return;
+    sessionStorage.setItem("brainPrefill", query);
+    close();
+    window.location.assign("/#/brain");
+  }, [close, text]);
 
   const uploadRecording = useCallback(
     async (blob: Blob, mimeType: string) => {
@@ -286,166 +394,161 @@ export function CaptureModal() {
   }, [busy, uploadRecording, voiceState]);
 
   if (!open) return null;
+  const counts = response?.counts ?? EMPTY_COUNTS;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-in items-start justify-center bg-black/50 px-4 pt-[16vh] fade-in-0 duration-150"
+      className="fixed inset-0 z-[60] flex animate-in items-start justify-center bg-black/50 px-4 pt-[12vh] fade-in-0 duration-150"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) setOpen(false);
+        if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="w-full max-w-xl animate-in rounded-2xl border border-border bg-surface p-4 shadow-[var(--float)] fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2 duration-200 ease-out">
-        <div className="flex items-start gap-3">
-          <textarea
-            ref={inputRef}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !bulk) {
-                e.preventDefault();
-                submitOne();
-              }
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                (bulk ? submitSmart : submitOne)();
-              }
-            }}
-            rows={Math.min(10, Math.max(1, text.split("\n").length))}
-            placeholder="Empty your head… one line, or paste a whole Slack message"
-            className="min-w-0 flex-1 resize-none bg-transparent text-[17px] leading-relaxed text-fg placeholder:text-dim focus:outline-none focus-visible:outline-none"
-          />
-          <Button
-            variant="outline"
-            onClick={() => void toggleRecording()}
-            disabled={busy || voiceState === "requesting" || voiceState === "uploading" || voiceState === "success"}
-            title={voiceState === "recording" ? "Stop recording" : "Record a voice capture"}
-            aria-label={voiceState === "recording" ? "Stop recording" : "Start voice recording"}
-            className={cx("size-9 shrink-0 p-0", voiceState === "recording" && "border-danger text-danger")}
-          >
-            {voiceState === "requesting" || voiceState === "uploading" ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : voiceState === "recording" ? (
-              <SquareIcon className="size-3.5 fill-current" />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Capture or search ${identity.appName}`}
+        className="flex max-h-[76vh] w-full max-w-2xl animate-in flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--float)] fade-in-0 zoom-in-[0.97] slide-in-from-bottom-2 duration-200 ease-out"
+      >
+        <div className="p-4">
+          <div className="flex items-start gap-3">
+            {searchLoading ? (
+              <Loader2Icon className="mt-1.5 size-4 shrink-0 animate-spin text-muted" />
             ) : (
-              <MicIcon className="size-4" />
+              <SearchIcon className="mt-1.5 size-4 shrink-0 text-muted" />
             )}
-          </Button>
-        </div>
-        {voiceState === "requesting" ? (
-          <div className="mt-3">
-            <Status pulse>Waiting for microphone permission…</Status>
+            <textarea
+              ref={inputRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown" && actionCount > 0) {
+                  e.preventDefault();
+                  setSelected((value) => value === null ? 0 : (value + 1) % actionCount);
+                } else if (e.key === "ArrowUp" && actionCount > 0) {
+                  e.preventDefault();
+                  setSelected((value) => value === null ? actionCount - 1 : (value - 1 + actionCount) % actionCount);
+                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  capture();
+                } else if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  const result = selected === null ? undefined : results[selected];
+                  if (result) openResult(result.url);
+                  else if (selected === results.length) askBrain();
+                  else capture();
+                }
+              }}
+              rows={Math.min(6, Math.max(1, text.split("\n").length))}
+              placeholder="Empty your head… or search"
+              className="min-w-0 flex-1 resize-none bg-transparent text-[17px] leading-relaxed text-fg placeholder:text-dim focus:outline-none focus-visible:outline-none"
+            />
+            <Button
+              variant="outline"
+              onClick={() => void toggleRecording()}
+              disabled={busy || voiceState === "requesting" || voiceState === "uploading" || voiceState === "success"}
+              title={voiceState === "recording" ? "Stop recording" : "Record a voice capture"}
+              aria-label={voiceState === "recording" ? "Stop recording" : "Start voice recording"}
+              className={cx("size-9 shrink-0 p-0", voiceState === "recording" && "border-danger text-danger")}
+            >
+              {voiceState === "requesting" || voiceState === "uploading" ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : voiceState === "recording" ? (
+                <SquareIcon className="size-3.5 fill-current" />
+              ) : (
+                <MicIcon className="size-4" />
+              )}
+            </Button>
           </div>
-        ) : null}
-        {voiceState === "recording" ? (
-          <div className="mt-3">
-            <Status tone="danger" pulse>
-              Recording · {elapsedSeconds}s
-            </Status>
-          </div>
-        ) : null}
-        {voiceState === "uploading" ? (
-          <div className="mt-3">
-            <Status tone="accent" pulse>
-              Transcribing and routing…
-            </Status>
-          </div>
-        ) : null}
-        {voiceState === "success" ? (
-          <div className="mt-3">
-            <Status tone="success">Transcript captured — routing it now</Status>
-          </div>
-        ) : null}
-        {voiceError ? (
-          <p role="alert" className="mt-3 text-xs text-danger">
-            {voiceError}
-          </p>
-        ) : null}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <div
-            className={cx(
-              "overflow-hidden transition-all duration-200",
-              bulk ? "-ml-2 max-w-0 opacity-0" : "max-w-44 opacity-100",
-            )}
-          >
+          {voiceState === "requesting" ? (
+            <div className="mt-3"><Status pulse>Waiting for microphone permission…</Status></div>
+          ) : null}
+          {voiceState === "recording" ? (
+            <div className="mt-3"><Status tone="danger" pulse>Recording · {elapsedSeconds}s</Status></div>
+          ) : null}
+          {voiceState === "uploading" ? (
+            <div className="mt-3"><Status tone="accent" pulse>Transcribing and routing…</Status></div>
+          ) : null}
+          {voiceState === "success" ? (
+            <div className="mt-3"><Status tone="success">Transcript captured — routing it now</Status></div>
+          ) : null}
+          {voiceError ? (
+            <p role="alert" className="mt-3 text-xs text-danger">{voiceError}</p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className={cx("overflow-hidden transition-all duration-200", bulk ? "-ml-2 max-w-0 opacity-0" : "max-w-44 opacity-100")}>
+              <DropdownMenu>
+                <DropdownMenuTrigger className={CHIP} disabled={bulk} title="What is this item?">
+                  <KindIcon kind={kind} /> {KIND_LABEL[kind]}
+                  <ChevronDownIcon className="size-3 text-dim" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-40">
+                  {KIND_ORDER.map((k) => (
+                    <DropdownMenuItem key={k} onClick={() => setKind(k)}>
+                      <KindIcon kind={k} /> {KIND_LABEL[k]}
+                      {kind === k ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <DropdownMenu>
-              <DropdownMenuTrigger className={CHIP} disabled={bulk} title="What is this item?">
-                <KindIcon kind={kind} /> {KIND_LABEL[kind]}
+              <DropdownMenuTrigger className={CHIP} title="Where it lands">
+                {project === "" ? <SparklesIcon className="size-3.5 text-accent-text" /> : <FolderIcon className="size-3.5" />}
+                {projectLabel}
                 <ChevronDownIcon className="size-3 text-dim" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-40">
-                {KIND_ORDER.map((k) => (
-                  <DropdownMenuItem key={k} onClick={() => setKind(k)}>
-                    <KindIcon kind={k} /> {KIND_LABEL[k]}
-                    {kind === k ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+              <DropdownMenuContent className="max-h-72 w-56">
+                <DropdownMenuItem onClick={() => setProject("")}>
+                  <SparklesIcon className="size-3.5 text-accent-text" /> Auto — {identity.appName} routes it
+                  {project === "" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setProject("__misc")}>
+                  Misc (no project)
+                  {project === "__misc" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                </DropdownMenuItem>
+                {projects.length > 0 ? <DropdownMenuSeparator /> : null}
+                {projects.map((p) => (
+                  <DropdownMenuItem key={p.projectId} onClick={() => setProject(p.projectId)}>
+                    {p.title}
+                    {project === p.projectId ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger className={CHIP} title="Where it lands">
-              {project === "" ? (
-                <SparklesIcon className="size-3.5 text-accent-text" />
-              ) : (
-                <FolderIcon className="size-3.5" />
+            <button
+              onClick={() => setChat(!chat)}
+              title={chat
+                ? "A describe-chat researches + routes it — click to land silently"
+                : "Lands silently — click to start a describe-chat"}
+              className={cx(CHIP, "cursor-pointer", !chat && "text-dim")}
+            >
+              <Dot tone={chat ? "success" : "neutral"} /> describe-chat
+            </button>
+            <button
+              onClick={capture}
+              disabled={busy || voiceBusy || text.trim().length === 0}
+              className={cx(
+                "ml-auto inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
+                "transition-all duration-200 disabled:pointer-events-none disabled:opacity-40",
+                bulk
+                  ? "border-accent bg-transparent text-accent-text hover:bg-accent/10"
+                  : "border-transparent bg-btn text-btn-fg hover:bg-btn-hover",
               )}
-              {projectLabel}
-              <ChevronDownIcon className="size-3 text-dim" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-72 w-56">
-              <DropdownMenuItem onClick={() => setProject("")}>
-                <SparklesIcon className="size-3.5 text-accent-text" /> Auto — {identity.appName} routes it
-                {project === "" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setProject("__misc")}>
-                Misc (no project)
-                {project === "__misc" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
-              </DropdownMenuItem>
-              {projects.length > 0 ? <DropdownMenuSeparator /> : null}
-              {projects.map((p) => (
-                <DropdownMenuItem key={p.projectId} onClick={() => setProject(p.projectId)}>
-                  {p.title}
-                  {project === p.projectId ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            onClick={() => setChat(!chat)}
-            title={chat ? "A describe-chat researches + routes it — click to land silently" : "Lands silently — click to start a describe-chat"}
-            className={cx(CHIP, "cursor-pointer", !chat && "text-dim")}
-          >
-            <Dot tone={chat ? "success" : "neutral"} /> describe-chat
-          </button>
-          <button
-            onClick={bulk ? submitSmart : submitOne}
-            disabled={busy || voiceBusy || text.trim().length === 0}
-            className={cx(
-              "ml-auto inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium",
-              "transition-all duration-200 disabled:pointer-events-none disabled:opacity-40",
-              bulk
-                ? "border-accent bg-transparent text-accent-text hover:bg-accent/10"
-                : "border-transparent bg-btn text-btn-fg hover:bg-btn-hover",
-            )}
-          >
-            {busy ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : bulk ? (
-              <SparklesIcon className="size-3.5" />
-            ) : (
-              <PlusIcon className="size-3.5" />
-            )}
-            <span key={bulk ? "bulk" : "one"} className="animate-in fade-in-0 duration-150">
-              {bulk ? "AI split & route" : "Capture"}
-            </span>
-            <Kbd light={!bulk}>{bulk ? "⌘⏎" : "⏎"}</Kbd>
-          </button>
-        </div>
-        <p className="mt-3 text-[11px] leading-relaxed text-dim">
+            >
+              {busy ? (
+                <Loader2Icon className="size-3.5 animate-spin" />
+              ) : bulk ? (
+                <SparklesIcon className="size-3.5" />
+              ) : (
+                <PlusIcon className="size-3.5" />
+              )}
+              <span>{bulk ? "AI split & route" : "Capture"}</span>
+              <Kbd light={!bulk}>{bulk ? "⌘⏎" : "⏎"}</Kbd>
+            </button>
+          </div>
           {bulk ? (
-            <>
-              Splits the paste into typed items, routes them, and merges with existing tickets (takes a minute or
-              two).{" "}
+            <p className="mt-3 text-[11px] leading-relaxed text-dim">
+              Splits the paste into typed items, routes them, and merges with existing tickets (takes a minute or two).{" "}
               <button
                 onClick={submitOne}
                 disabled={busy || voiceBusy}
@@ -454,14 +557,95 @@ export function CaptureModal() {
                 Capture as one item
               </button>{" "}
               instead.
-            </>
-          ) : (
-            <>
-              <span className="font-medium text-muted">⏎</span> capture · <span className="font-medium text-muted">esc</span> close
-            </>
-          )}
-        </p>
-      </div>
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 border-y border-border px-4 py-2.5">
+          {SOURCE_ORDER.map((source) => (
+            <button
+              key={source}
+              type="button"
+              aria-pressed={filter === source}
+              onClick={() => {
+                setFilter((value) => value === source ? null : source);
+                setSelected(null);
+              }}
+              className={cx("rounded-full", filter === source && "ring-1 ring-border-hover")}
+            >
+              <Tag tone={SOURCE_META[source].tone}>
+                {SOURCE_META[source].label} {counts[source]}
+              </Tag>
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          {SOURCE_ORDER.map((source) => {
+            const grouped = results.filter((result) => result.source === source);
+            if (grouped.length === 0) return null;
+            return (
+              <div key={source} className="mb-2 last:mb-0">
+                <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-dim">
+                  {SOURCE_META[source].heading}
+                </p>
+                {grouped.map((result) => {
+                  const index = results.indexOf(result);
+                  return (
+                    <button
+                      key={`${result.source}:${result.id}:${result.url}`}
+                      type="button"
+                      ref={(element) => {
+                        if (element && selected === index) element.scrollIntoView({ block: "nearest" });
+                      }}
+                      onMouseEnter={() => setSelected(index)}
+                      onClick={() => openResult(result.url)}
+                      className={cx(
+                        "flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left",
+                        selected === index ? "bg-side" : "hover:bg-side/70",
+                      )}
+                    >
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface">
+                        <SourceIcon source={result.source} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-fg">{result.title}</span>
+                        <span className="line-clamp-2 text-xs leading-relaxed text-muted">{result.snippet}</span>
+                      </span>
+                      {result.projectId ? <Tag tone="neutral">{result.projectId}</Tag> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {text.trim().length >= 2 && !searchLoading && results.length === 0 && !searchError ? (
+            <p className="px-3 py-6 text-center text-sm text-muted">No matching results.</p>
+          ) : null}
+          {text.trim().length < 2 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted">Type at least two characters to search.</p>
+          ) : null}
+          {searchError ? <p className="px-3 py-3 text-xs text-danger">{searchError}</p> : null}
+        </div>
+
+        <div className="border-t border-border p-2">
+          <button
+            type="button"
+            disabled={!text.trim()}
+            onMouseEnter={() => setSelected(results.length)}
+            onClick={askBrain}
+            className={cx(
+              "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm disabled:opacity-40",
+              selected === results.length ? "bg-side" : "hover:bg-side/70",
+            )}
+          >
+            <BrainIcon className="size-4" /> Ask the brain about '{text}'
+          </button>
+        </div>
+        <footer className="border-t border-border px-4 py-2 text-center text-[10px] text-dim">
+          ↵ capture · ↑↓ results · ⌘↵ capture · esc close
+        </footer>
+      </section>
     </div>
   );
 }

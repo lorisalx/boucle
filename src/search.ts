@@ -130,8 +130,8 @@ function probeFts5(): boolean {
 export class BrainSearch implements SearchIndexer {
   private readonly db: DatabaseSync;
   private readonly store: BoucleStore;
-  private readonly provider: Provider;
-  private readonly embeddingModel: string | null;
+  private provider: Provider;
+  private embeddingModel: string | null;
   private readonly ftsAvailable: boolean;
   private readonly watchers: FSWatcher[] = [];
   private fileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -153,6 +153,14 @@ export class BrainSearch implements SearchIndexer {
     }
     this.initSchema();
     this.store.setSearchIndexer(this);
+  }
+
+  /** Pick up a provider/model change made through settings without restarting. */
+  reconfigureProvider(): void {
+    this.provider = getProvider();
+    this.embeddingModel = getEmbeddingModel();
+    this.embeddingDisabled = false;
+    this.scheduleEmbedding();
   }
 
   private initSchema(): void {
@@ -322,7 +330,9 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private async embedMissingOnce(): Promise<void> {
-    if (this.embeddingDisabled || !this.embeddingModel || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return;
+    const provider = this.provider;
+    const embeddingModel = this.embeddingModel;
+    if (this.embeddingDisabled || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return;
     const rows = this.db
       .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
           d.project_id AS projectId,d.url,d.content_hash AS contentHash
@@ -330,20 +340,20 @@ export class BrainSearch implements SearchIndexer {
           ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id
             AND e.content_hash=d.content_hash AND e.model=?
         WHERE d.source != 'event' AND e.embedding IS NULL ORDER BY d.source,d.doc_id,d.chunk_id`)
-      .all(this.embeddingModel) as unknown as SearchDocument[];
+      .all(embeddingModel) as unknown as SearchDocument[];
     try {
       for (let offset = 0; offset < rows.length; offset += EMBED_BATCH_SIZE) {
         const batch = rows.slice(offset, offset + EMBED_BATCH_SIZE);
-        const vectors = await this.provider.embed(batch.map((row) => `${row.title}\n${row.content}`));
-        if (vectors.length !== batch.length) throw new Error(`${this.provider.name} embeddings response length mismatch`);
+        const vectors = await provider.embed(batch.map((row) => `${row.title}\n${row.content}`));
+        if (vectors.length !== batch.length) throw new Error(`${provider.name} embeddings response length mismatch`);
         batch.forEach((row, index) => {
           this.db
             .prepare("INSERT OR REPLACE INTO search_embeddings (source,doc_id,chunk_id,content_hash,model,embedding) VALUES (?,?,?,?,?,?)")
-            .run(row.source, row.docId, row.chunkId, row.contentHash, this.embeddingModel, vectorBlob(vectors[index] ?? []));
+            .run(row.source, row.docId, row.chunkId, row.contentHash, embeddingModel, vectorBlob(vectors[index] ?? []));
         });
       }
     } catch {
-      this.embeddingDisabled = true;
+      if (this.provider === provider && this.embeddingModel === embeddingModel) this.embeddingDisabled = true;
     }
   }
 
@@ -419,9 +429,11 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private async vectorSearch(query: string): Promise<RankedDocument[]> {
-    if (this.embeddingDisabled || !this.embeddingModel || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return [];
+    const provider = this.provider;
+    const embeddingModel = this.embeddingModel;
+    if (this.embeddingDisabled || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return [];
     try {
-      const [queryVector] = await this.provider.embed([query]);
+      const [queryVector] = await provider.embed([query]);
       if (!queryVector) return [];
       const rows = this.db
         .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
@@ -429,13 +441,13 @@ export class BrainSearch implements SearchIndexer {
           FROM search_documents d JOIN search_embeddings e
             ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id
               AND e.content_hash=d.content_hash AND e.model=?`)
-        .all(this.embeddingModel) as unknown as StoredEmbedding[];
+        .all(embeddingModel) as unknown as StoredEmbedding[];
       return rows
         .map((row) => ({ ...row, snippet: firstMatchingLine(row.content, query), similarity: cosine(queryVector, blobVector(row.embedding)) }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 100);
     } catch {
-      this.embeddingDisabled = true;
+      if (this.provider === provider && this.embeddingModel === embeddingModel) this.embeddingDisabled = true;
       return [];
     }
   }

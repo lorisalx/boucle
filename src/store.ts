@@ -877,7 +877,7 @@ export class BoucleStore {
   private readonly db: DatabaseSync;
   private searchIndexer: SearchIndexer | null = null;
 
-  constructor(dbPath: string, identity: Identity = getIdentity()) {
+  constructor(dbPath: string, identity?: Identity) {
     this.db = new DatabaseSync(dbPath);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.db.exec("PRAGMA foreign_keys = ON;");
@@ -885,7 +885,7 @@ export class BoucleStore {
     this.initSchema(identity);
   }
 
-  private initSchema(identity: Identity): void {
+  private initSchema(identity?: Identity): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS tickets (
         ticket_id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
@@ -938,10 +938,11 @@ export class BoucleStore {
       CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation
         ON conversation_messages(conversation_id, id);
     `);
+    const resolvedIdentity = identity ?? getIdentity(this);
     this.migrate();
     this.closeAbandonedRuns();
-    this.seedLoops(identity);
-    if (identity.demoMode) this.seedTickets();
+    this.seedLoops(resolvedIdentity);
+    if (resolvedIdentity.demoMode) this.seedTickets();
   }
 
   /** Additive column migrations for DBs created before a column existed. */
@@ -1646,5 +1647,20 @@ export class BoucleStore {
     this.db
       .prepare(`INSERT INTO boucle_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .run(key, value);
+  }
+
+  setMetaValues(entries: ReadonlyArray<readonly [string, string]>): void {
+    if (entries.length === 0) return;
+    const statement = this.db.prepare(
+      `INSERT INTO boucle_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    );
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const [key, value] of entries) statement.run(key, value);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 }

@@ -5,7 +5,6 @@ import { Chat } from "./Chat.tsx";
 import { Home } from "./Home.tsx";
 import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
-import { Palette } from "./Palette.tsx";
 import { Projects } from "./Projects.tsx";
 import { Settings } from "./Settings.tsx";
 import { Shell } from "./Shell.tsx";
@@ -36,7 +35,6 @@ export function App() {
   return (
     <Shell>
       {view}
-      <Palette />
       <CaptureModal />
     </Shell>
   );

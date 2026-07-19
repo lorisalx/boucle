@@ -1,17 +1,92 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { api } from "./api.ts";
-import { useIdentity } from "./hooks.ts";
+import { api, type SettingSource, type SettingsField, type SettingsUpdate } from "./api.ts";
+import { refreshIdentity, useIdentity } from "./hooks.ts";
 import { Button, Status } from "./ui.tsx";
 
+const INPUT =
+  "rounded-md border border-border bg-transparent px-3 py-2 text-sm text-fg outline-none " +
+  "placeholder:text-dim focus:border-border-hover";
+
+function SourceHint({ source }: { source: SettingSource }) {
+  const text = source === "meta" ? "Overridden here" : source === "env" ? "Set in .env; saving overrides it" : "Using default";
+  return <span className="text-[11px] text-dim">{text}</span>;
+}
+
+function Field({ label, source, children }: { label: string; source: SettingSource; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="flex items-baseline justify-between gap-3 text-xs font-medium text-muted">
+        {label}
+        <SourceHint source={source} />
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function Card({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-border bg-surface px-4 py-4">
+      <h2 className="text-sm font-medium text-fg">{title}</h2>
+      <p className="mt-1 text-xs text-muted">{description}</p>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
 export function Settings() {
-  const identity = useIdentity();
+  const settings = useIdentity();
+  const [identityForm, setIdentityForm] = useState({
+    appName: settings.appName,
+    ownerName: settings.ownerName,
+    orgName: settings.orgName,
+  });
+  const [providerForm, setProviderForm] = useState({
+    provider: settings.provider,
+    chatModel: settings.chatModel,
+    embedModel: settings.embedModel,
+    transcribeModel: settings.transcribeModel,
+    openaiBaseUrl: settings.openaiBaseUrl,
+  });
+  const [identityError, setIdentityError] = useState<string | null>(null);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  const [saving, setSaving] = useState<"identity" | "provider" | null>(null);
+  const [saved, setSaved] = useState<"identity" | "provider" | null>(null);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    setIdentityForm({ appName: settings.appName, ownerName: settings.ownerName, orgName: settings.orgName });
+    setProviderForm({
+      provider: settings.provider,
+      chatModel: settings.chatModel,
+      embedModel: settings.embedModel,
+      transcribeModel: settings.transcribeModel,
+      openaiBaseUrl: settings.openaiBaseUrl,
+    });
+  }, [settings]);
+
+  useEffect(() => {
     api.mcpInfo().then(setMcp).catch(() => {});
   }, []);
+
+  const save = async (card: "identity" | "provider", update: SettingsUpdate) => {
+    const setError = card === "identity" ? setIdentityError : setProviderError;
+    setError(null);
+    setSaving(card);
+    setSaved(null);
+    try {
+      await api.updateSettings(update);
+      await refreshIdentity();
+      setSaved(card);
+      setTimeout(() => setSaved((value) => value === card ? null : value), 1500);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(null);
+    }
+  };
 
   const copyMcp = () => {
     if (!mcp) return;
@@ -21,30 +96,122 @@ export function Settings() {
     });
   };
 
+  const source = (field: SettingsField) => settings.sources[field];
+
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="mb-6 text-[22px] font-bold tracking-tight text-fg">Settings</h1>
 
       <div className="flex flex-col gap-6">
-        <div className="rounded-lg border border-border bg-surface px-4 py-3">
-          <h2 className="text-sm font-medium capitalize text-fg">{identity.providerName || "Provider"}</h2>
-          <p className="mt-1 text-xs text-muted">
-            Spawned chats use the configured provider. {identity.appName} never exposes or stores its API key.
-          </p>
-          <div className="mt-3">
-            <Status tone={identity.providerConfigured ? "success" : "neutral"}>
-              API key {identity.providerConfigured ? "present" : "not configured"}
+        <Card title="Identity" description="Names shown in the interface and used to give agent prompts context.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="App name" source={source("appName")}>
+              <input
+                className={INPUT}
+                value={identityForm.appName}
+                onChange={(event) => setIdentityForm((value) => ({ ...value, appName: event.target.value }))}
+              />
+            </Field>
+            <Field label="Owner name" source={source("ownerName")}>
+              <input
+                className={INPUT}
+                value={identityForm.ownerName}
+                onChange={(event) => setIdentityForm((value) => ({ ...value, ownerName: event.target.value }))}
+              />
+            </Field>
+            <Field label="Organization name" source={source("orgName")}>
+              <input
+                className={INPUT}
+                value={identityForm.orgName}
+                onChange={(event) => setIdentityForm((value) => ({ ...value, orgName: event.target.value }))}
+              />
+            </Field>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <Button disabled={saving !== null} onClick={() => void save("identity", identityForm)}>
+              {saving === "identity" ? "Saving…" : "Save identity"}
+            </Button>
+            {saved === "identity" ? <span className="text-xs text-success">Saved.</span> : null}
+          </div>
+          {identityError ? <p role="alert" className="mt-3 text-xs text-danger">{identityError}</p> : null}
+        </Card>
+
+        <Card title="Provider" description="Choose the API used for new chats, embeddings, and voice transcription.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Provider" source={source("provider")}>
+              <select
+                className={INPUT}
+                value={providerForm.provider}
+                onChange={(event) =>
+                  setProviderForm((value) => ({
+                    ...value,
+                    provider: event.target.value as "mistral" | "openai",
+                  }))
+                }
+              >
+                <option value="mistral">Mistral</option>
+                <option value="openai">OpenAI-compatible</option>
+              </select>
+            </Field>
+            <Field label="Chat model" source={source("chatModel")}>
+              <input
+                className={INPUT}
+                value={providerForm.chatModel}
+                onChange={(event) => setProviderForm((value) => ({ ...value, chatModel: event.target.value }))}
+              />
+            </Field>
+            <Field label="Embedding model" source={source("embedModel")}>
+              <input
+                className={INPUT}
+                value={providerForm.embedModel}
+                onChange={(event) => setProviderForm((value) => ({ ...value, embedModel: event.target.value }))}
+              />
+            </Field>
+            <Field label="Transcription model" source={source("transcribeModel")}>
+              <input
+                className={INPUT}
+                value={providerForm.transcribeModel}
+                onChange={(event) =>
+                  setProviderForm((value) => ({ ...value, transcribeModel: event.target.value }))
+                }
+              />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="OpenAI-compatible base URL" source={source("openaiBaseUrl")}>
+                <input
+                  className={INPUT}
+                  value={providerForm.openaiBaseUrl}
+                  onChange={(event) =>
+                    setProviderForm((value) => ({ ...value, openaiBaseUrl: event.target.value }))
+                  }
+                />
+              </Field>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 rounded-md border border-border bg-side/40 px-3 py-2">
+            <Status tone={settings.mistralApiKeyPresent ? "success" : "neutral"}>
+              MISTRAL_API_KEY {settings.mistralApiKeyPresent ? "detected in environment" : "not detected"}
+            </Status>
+            <Status tone={settings.openaiApiKeyPresent ? "success" : "neutral"}>
+              OPENAI_API_KEY {settings.openaiApiKeyPresent ? "detected in environment" : "not detected"}
             </Status>
           </div>
-        </div>
+          <p className="mt-2 text-[11px] text-dim">API keys remain environment-only and are never stored in Boucle.</p>
+          <div className="mt-4 flex items-center gap-3">
+            <Button disabled={saving !== null} onClick={() => void save("provider", providerForm)}>
+              {saving === "provider" ? "Saving…" : "Save provider"}
+            </Button>
+            {saved === "provider" ? <span className="text-xs text-success">Saved.</span> : null}
+          </div>
+          {providerError ? <p role="alert" className="mt-3 text-xs text-danger">{providerError}</p> : null}
+        </Card>
 
         <div className="border-t border-border pt-6">
           <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for Vibe</h2>
           <p className="mb-3 text-xs text-muted">
-            Boucle serves its ticket tools over MCP. Loop runs get this wired automatically; to point your
-            own Vibe session at Boucle, add this to its{" "}
-            <code className="font-mono text-muted">config.toml</code> (HTTP needs the server running; stdio
-            works headless).
+            Boucle serves its ticket tools over MCP. Loop runs get this wired automatically; to point your own
+            Vibe session at Boucle, add this to its <code className="font-mono text-muted">config.toml</code>
+            (HTTP needs the server running; stdio works headless).
           </p>
           {mcp ? (
             <>
@@ -52,9 +219,7 @@ export function Settings() {
                 {mcp.configToml}
               </pre>
               <div className="mt-2 flex items-center gap-3">
-                <Button variant="outline" onClick={copyMcp}>
-                  Copy config
-                </Button>
+                <Button variant="outline" onClick={copyMcp}>Copy config</Button>
                 {copied ? <span className="text-xs text-success">Copied.</span> : null}
                 <span className="font-mono text-xs text-dim">endpoint: {mcp.url}</span>
               </div>

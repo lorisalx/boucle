@@ -6,6 +6,7 @@
  */
 import { resolve, join } from "node:path";
 import { resolveBrainDir } from "./config.ts";
+import { resolveIdentitySettings, type SettingsStore } from "./settings.ts";
 
 export interface Identity {
   readonly appName: string; // BOUCLE_APP_NAME, default "Boucle"
@@ -21,12 +22,26 @@ function isDemoMode(): boolean {
   return resolve(resolveBrainDir()) === FAKE_BRAIN_DIR;
 }
 
-export function getIdentity(): Identity {
+let settingsStore: SettingsStore | null = null;
+let cachedIdentity: Identity | null = null;
+
+export function getIdentity(store?: SettingsStore): Identity {
+  if (store && store !== settingsStore) {
+    settingsStore = store;
+    cachedIdentity = null;
+  }
+  if (cachedIdentity) return cachedIdentity;
   const demoMode = isDemoMode();
-  return {
-    appName: (process.env.BOUCLE_APP_NAME ?? "").trim() || "Boucle",
-    ownerName: (process.env.BOUCLE_OWNER_NAME ?? "").trim() || (demoMode ? "Nora Bellier" : ""),
-    orgName: (process.env.BOUCLE_ORG_NAME ?? "").trim() || (demoMode ? "Brumeline" : ""),
+  const settings = resolveIdentitySettings(settingsStore, demoMode);
+  cachedIdentity = {
+    appName: settings.appName.value,
+    ownerName: settings.ownerName.value,
+    orgName: settings.orgName.value,
     demoMode,
   };
+  return cachedIdentity;
+}
+
+export function invalidateIdentity(): void {
+  cachedIdentity = null;
 }
