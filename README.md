@@ -1,56 +1,60 @@
-# Mistral Boucle
+# Boucle
 
-Mistral Boucle is a local chief-of-staff loop rebuilt on the Mistral stack. Voxtral captures voice, Vibe CLI running Devstral executes recurring loops, and the Agents API powers chats in the browser. It runs against a fully synthetic brain: no real brain or ticket data is sent to Mistral.
+Boucle is a self-hosted chief-of-staff loop. It turns captures into tickets, runs recurring agent work, and keeps project and meeting context in a local Markdown brain.
 
-The open parts of the stack—Vibe CLI, Devstral and Voxtral weights, and this repository—can be Apache-2.0 and self-hosted.
+The workflow is capture → tickets → loops → brain. SQLite stores tickets, conversations, schedules, and cost records. Markdown files remain the source of truth for project and meeting context.
 
-![screenshot](docs/screenshot.png)
+> [Screenshot placeholder](docs/screenshot.png). Replace it when the neutral product tour is ready.
 
 ## Architecture
 
-| Part | Mistral product | Model | Role |
-|---|---|---|---|
-| Browser chats, describe, project brief | Agents API | `mistral-medium-3.5` | Creates browser conversations and relays local tool calls |
-| Loops, smart capture, routing, enrich | Vibe CLI | `devstral-2512` | Runs agentic work against Boucle's local MCP tools |
-| Voice capture | Voxtral batch transcription | `voxtral-mini-latest` | Transcribes short recordings at $0.003/min |
-| Voice output (stretch) | Voxtral TTS | `voxtral-mini-tts-latest` | Reads a queue briefing aloud |
-| Brain | Local Markdown + SQLite | — | Keeps the demo dataset fully synthetic |
+| Capability | Implementation | Local state |
+|---|---|---|
+| Chat and tools | Selected OpenAI-compatible HTTP provider with a local tool relay | Conversations and messages in SQLite |
+| Embeddings | Selected provider embedding endpoint with lexical fallback | Model-scoped vectors in SQLite |
+| Transcription | Selected provider audio transcription endpoint | Audio is sent for transcription, then the text enters capture |
+| Agent loops | Vibe CLI with Boucle's MCP tools | Schedules, transcripts, and reported costs |
+| Brain | Markdown project and meeting notes with hybrid search | Files under `BOUCLE_BRAIN_DIR` |
+
+## Providers
+
+| `BOUCLE_PROVIDER` | Services | Chat and tools | Embeddings | Transcription |
+|---|---|---|---|---|
+| `mistral` or unset | Mistral | Yes | Yes | Yes |
+| `openai` | OpenAI, Ollama, OpenRouter, vLLM, and compatible gateways | Yes | When the endpoint exists | When the endpoint exists |
+
+Mistral is the default. Agent loops use Vibe CLI in both provider modes.
 
 ## Quickstart
 
-Create `.env` at the repository root (it is gitignored):
+Use Node 24 or later and pnpm. The bundled demo needs one Mistral API key.
 
-```dotenv
-BOUCLE_PORT=4419
-BOUCLE_DB=/Users/you/.mistral-boucle/boucle.db
-BOUCLE_BRAIN_DIR=/absolute/path/to/mistral-boucle/fake-brain
-MISTRAL_API_KEY=your_key_here
+```sh
+git clone https://github.com/lorisalx/boucle.git
+cd boucle
+cp .env.example .env
+chmod 600 .env
 ```
 
-Install dependencies and start the API:
+Set the key in `.env`:
+
+```dotenv
+MISTRAL_API_KEY=replace_with_your_key
+```
+
+Install, build, and start Boucle:
 
 ```sh
 pnpm install
 pnpm --dir web install
+pnpm --dir web build
 node src/server.ts
 ```
 
-In another terminal, start the web app at `http://localhost:4320`:
+Open `http://localhost:4419`.
 
-```sh
-pnpm --dir web dev
-```
+## Documentation
 
-## GraphRAG
-
-`brain_graph_search` layers GraphRAG on top of the hybrid search: FTS5 + `mistral-embed`
-seeds are expanded 1-2 hops over the brain's entity graph (projects, tickets, meetings,
-people — edges from ticket/project links, meeting frontmatter, and action-item owners).
-Every expanded node carries a `via` path explaining how it was reached, so brain-chat
-answers can cite the trail ("Renewal signal review → Bastien Leroux"). Exposed to the
-browser brain chat (Agents API tool), to Vibe loops (MCP tool), and as
-`GET /api/search/graph?q=…`. Shipped right after the demo presentation.
-
-## Budget guardrails
-
-The demo has a hard $40 credit budget. Every Vibe invocation is capped at `$0.25` and 30 turns; loops ship disabled and use intervals of at least 60 minutes when enabled. Loop, smart-capture, routing, and enrich costs are recorded and totaled in the Loops view. The server warns at $10 cumulative Vibe spend and refuses any new Vibe invocation at $30, preserving demo-day margin. The Conversations API does not report per-call cost, so browser chat, describe, and brief calls are not assigned invented estimates. Expected development spend is roughly $10–15.
+- [Self-hosting](docs/self-hosting.md)
+- [Providers](docs/providers.md)
+- [Apache 2.0 license](LICENSE)

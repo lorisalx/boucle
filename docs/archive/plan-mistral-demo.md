@@ -1,3 +1,5 @@
+> Historical demo build log. It is retained for context and does not describe the current product.
+
 # mistral-boucle — plan
 
 Boucle rebuilt on the Mistral stack: Voxtral for voice capture, Vibe CLI (Devstral 2) as the
