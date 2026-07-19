@@ -615,7 +615,7 @@ function countTo(id,val,suffix){
 onEnter.s4b=async()=>{
   let rows=[];
   try{
-    const txt=await(await fetch(SURVEY_DATA,{cache:'no-store'})).text();
+    let txt='';try{txt=await(await fetch(SURVEY_DATA,{cache:'no-store'})).text()}catch(e){}if(!txt.trim()){txt=await(await fetch('survey-results.jsonl',{cache:'no-store'})).text()}
     rows=txt.trim()?txt.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
   }catch(e){}
   const n=rows.length;
