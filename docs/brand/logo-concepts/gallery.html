@@ -1,0 +1,263 @@
+<title>Boucle — logo proposals</title>
+<style>
+  :root {
+    --ink: #191817;
+    --charcoal: #3f3c39;
+    --stone: #78716c;
+    --stone-soft: #8f867c;
+    --cream: #faf9f7;
+    --paper: #f1efe9;
+    --hairline: #e2ddd3;
+    --card-bg: #fdfcfa;
+    --gold: #ffaf00;
+    --orange: #fa500f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #f4f1ea;
+      --charcoal: #d8d2c6;
+      --stone: #a39a8d;
+      --stone-soft: #8a8074;
+      --cream: #14120f;
+      --paper: #1b1815;
+      --hairline: #322d27;
+      --card-bg: #201c18;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #f4f1ea;
+    --charcoal: #d8d2c6;
+    --stone: #a39a8d;
+    --stone-soft: #8a8074;
+    --cream: #14120f;
+    --paper: #1b1815;
+    --hairline: #322d27;
+    --card-bg: #201c18;
+  }
+  :root[data-theme="light"] {
+    --ink: #191817;
+    --charcoal: #3f3c39;
+    --stone: #78716c;
+    --stone-soft: #8f867c;
+    --cream: #faf9f7;
+    --paper: #f1efe9;
+    --hairline: #e2ddd3;
+    --card-bg: #fdfcfa;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 64px 24px 80px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--stone);
+    margin: 0 0 14px;
+  }
+  .eyebrow .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), var(--orange));
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  h1 {
+    font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(2.4rem, 5vw, 3.4rem);
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .dek {
+    max-width: 62ch;
+    color: var(--charcoal);
+    font-size: 1.05rem;
+    line-height: 1.65;
+    margin: 0 0 52px;
+  }
+  .dek strong { color: var(--ink); font-weight: 600; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--hairline);
+    border-radius: 16px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .card.wide { grid-column: 1 / -1; }
+
+  .chips { display: flex; gap: 10px; }
+  .chip {
+    flex: 1;
+    aspect-ratio: 1 / 1;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .card.wide .chip { aspect-ratio: 340 / 130; }
+  .chip.on-cream { background: var(--cream); border: 1px solid var(--hairline); }
+  .chip.on-ink { background: var(--ink); }
+  .chip svg { width: 62%; height: 62%; display: block; }
+  .card.wide .chip svg { width: 78%; height: auto; }
+  .chip.on-ink svg text { fill: var(--cream); }
+
+  .meta h3 {
+    font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    font-weight: 500;
+    font-size: 1.2rem;
+    margin: 0 0 6px;
+  }
+  .meta p {
+    margin: 0;
+    color: var(--stone);
+    font-size: 0.92rem;
+    line-height: 1.55;
+    max-width: 46ch;
+  }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--hairline);
+    color: var(--stone-soft);
+    font-size: 0.82rem;
+    line-height: 1.7;
+  }
+  footer code {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    color: var(--charcoal);
+  }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow"><span class="dot"></span>Visual identity — logo proposals</p>
+  <h1>Boucle</h1>
+  <p class="dek">
+    <em>Boucle</em> is French for <strong>loop</strong> — the recurring agent cycle the whole product is built around.
+    The six directions below all draw from that one idea, in a single warm stroke plus the ember gradient
+    already used in the deck: some read it literally (a tied loop, an infinity cycle, a ticket on a ring),
+    others more figuratively (a curl, a monogram, a wordmark).
+  </p>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="a1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 66,22.3 A 32,32 0 1 1 22.3,34" fill="none" stroke="url(#a1)" stroke-width="11" stroke-linecap="round"/><circle cx="66" cy="22.3" r="7.5" fill="url(#a1)"/></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="a2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 66,22.3 A 32,32 0 1 1 22.3,34" fill="none" stroke="url(#a2)" stroke-width="11" stroke-linecap="round"/><circle cx="66" cy="22.3" r="7.5" fill="url(#a2)"/></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>Knotted Loop</h3>
+        <p>An open ring tied off with a small knot — the most literal <em>boucle</em>: a loop of string, tied. Reads well as a favicon down to 16px.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="b1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 50,50 C 50,32 30,32 22,50 C 30,68 50,68 50,50 C 50,32 70,32 78,50 C 70,68 50,68 50,50 Z" fill="none" stroke="url(#b1)" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="b2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 50,50 C 50,32 30,32 22,50 C 30,68 50,68 50,50 C 50,32 70,32 78,50 C 70,68 50,68 50,50 Z" fill="none" stroke="url(#b2)" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>Infinity Loop</h3>
+        <p>The cycle never stops — capture → route → enrich, continuously. Most abstract mark of the set; scales cleanly to a large hero size.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="c1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><rect x="27" y="16" width="15" height="70" rx="7.5" fill="url(#c1)"/><circle cx="58" cy="66" r="20" fill="none" stroke="url(#c1)" stroke-width="12"/><circle cx="78" cy="66" r="6" fill="url(#c1)"/></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="c2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><rect x="27" y="16" width="15" height="70" rx="7.5" fill="url(#c2)"/><circle cx="58" cy="66" r="20" fill="none" stroke="url(#c2)" stroke-width="12"/><circle cx="78" cy="66" r="6" fill="url(#c2)"/></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>B Monogram</h3>
+        <p>A lowercase <em>b</em> whose bowl is the same knotted-loop device as the first mark — ties the family together while giving a letterform anchor.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="d1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient><mask id="dm1"><rect x="0" y="0" width="100" height="100" fill="#fff"/><circle cx="34" cy="50" r="5" fill="#000"/></mask></defs><rect x="18" y="32" width="64" height="36" rx="8" fill="#f1efe9" stroke="#191817" stroke-width="2" mask="url(#dm1)"/><line x1="34" y1="32" x2="34" y2="68" stroke="#191817" stroke-width="1.5" stroke-dasharray="3 4"/><circle cx="34" cy="50" r="12" fill="none" stroke="url(#d1)" stroke-width="5"/></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="d2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient><mask id="dm2"><rect x="0" y="0" width="100" height="100" fill="#fff"/><circle cx="34" cy="50" r="5" fill="#000"/></mask></defs><rect x="18" y="32" width="64" height="36" rx="8" fill="#191817" stroke="#f1efe9" stroke-width="2" mask="url(#dm2)"/><line x1="34" y1="32" x2="34" y2="68" stroke="#f1efe9" stroke-width="1.5" stroke-dasharray="3 4"/><circle cx="34" cy="50" r="12" fill="none" stroke="url(#d2)" stroke-width="5"/></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>Ticket Loop</h3>
+        <p>A claim-check on a ring — the chief-of-staff ticket queue, literally looped. The most "product" mark: names what Boucle manages, not just what it does.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="e1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 25,75 C 20,45 40,20 62,28 C 80,35 78,55 62,58 C 52,60 46,52 52,46 C 55,43 59,45 58,49" fill="none" stroke="url(#e1)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 100 100"><defs><linearGradient id="e2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><path d="M 25,75 C 20,45 40,20 62,28 C 80,35 78,55 62,58 C 52,60 46,52 52,46 C 55,43 59,45 58,49" fill="none" stroke="url(#e2)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>French Curl</h3>
+        <p>The other meaning of <em>boucle</em> — a curl. A single calligraphic stroke that spirals in on itself. Warmest, least "software" mark of the set.</p>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <div class="chips">
+        <div class="chip on-cream">
+          <svg viewBox="0 0 360 100"><defs><linearGradient id="f1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><g transform="translate(10,18) scale(0.62)"><path d="M 50,50 C 50,32 30,32 22,50 C 30,68 50,68 50,50 C 50,32 70,32 78,50 C 70,68 50,68 50,50 Z" fill="none" stroke="url(#f1)" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/></g><text x="98" y="68" font-size="52" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" letter-spacing="-1" fill="#191817">boucle</text></svg>
+        </div>
+        <div class="chip on-ink">
+          <svg viewBox="0 0 360 100"><defs><linearGradient id="f2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ffd800"/><stop offset="50%" stop-color="#ff8205"/><stop offset="100%" stop-color="#fa500f"/></linearGradient></defs><g transform="translate(10,18) scale(0.62)"><path d="M 50,50 C 50,32 30,32 22,50 C 30,68 50,68 50,50 C 50,32 70,32 78,50 C 70,68 50,68 50,50 Z" fill="none" stroke="url(#f2)" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/></g><text x="98" y="68" font-size="52" font-weight="600" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" letter-spacing="-1" fill="#faf9f7">boucle</text></svg>
+        </div>
+      </div>
+      <div class="meta">
+        <h3>Wordmark Lockup</h3>
+        <p>The infinity icon paired with a lowercase, geometric-sans <em>boucle</em> — for headers, README badges, and the browser tab title.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    Source files — <code>docs/brand/logo-concepts/</code><br>
+    <code>01-knotted-loop.svg</code> · <code>02-infinity-loop.svg</code> · <code>03-b-monogram.svg</code> ·
+    <code>04-ticket-loop.svg</code> · <code>05-french-curl.svg</code> · <code>06-wordmark.svg</code><br><br>
+    Every mark is stroke-only except the ticket. Swap <code>url(#ember)</code> for a solid <code>#191817</code>
+    fill/stroke to get a one-color version for favicons, stamps, or engraving.
+  </footer>
+</div>

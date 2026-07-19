@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="ember" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd800"/>
+      <stop offset="50%" stop-color="#ff8205"/>
+      <stop offset="100%" stop-color="#fa500f"/>
+    </linearGradient>
+  </defs>
+  <rect x="27" y="16" width="15" height="70" rx="7.5" fill="url(#ember)"/>
+  <circle cx="58" cy="66" r="20" fill="none" stroke="url(#ember)" stroke-width="12"/>
+  <circle cx="78" cy="66" r="6" fill="url(#ember)"/>
+</svg>
