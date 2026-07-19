@@ -12,8 +12,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { api } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
-import { navigate, useHashRoute } from "./hooks.ts";
-import { ThemeToggle, cx } from "./ui.tsx";
+import { navigate, useHashRoute, useIdentity } from "./hooks.ts";
+import { Mark, ThemeToggle, cx } from "./ui.tsx";
 
 const BUDGET_CAP_USD = 30;
 
@@ -66,7 +66,7 @@ function BudgetMeter() {
   return (
     <div className="rounded-lg border border-border bg-surface px-2.5 py-2" title={warning ?? undefined}>
       <div className="mb-1.5 flex items-baseline justify-between text-[11px]">
-        <span className="text-muted">Mistral budget</span>
+        <span className="text-muted">Agent budget</span>
         <span className="font-mono font-medium tabular-nums text-fg">
           ${spend.toFixed(2)} / ${BUDGET_CAP_USD}
         </span>
@@ -112,20 +112,28 @@ function NavLinks({ hash, compact }: { hash: string; compact?: boolean }) {
   );
 }
 
+/** Initials for the identity badge, e.g. "Jane Doe" -> "JD"; falls back to "?" while unset. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return parts.slice(0, 2).map((p) => p[0]!.toUpperCase()).join("");
+}
+
 /**
  * The Vibe-style app frame: paper main pane, sidebar one shade deeper with the
- * brand, nav, budget meter, and the Brumeline persona.
+ * brand, nav, budget meter, and the owner identity block.
  */
 export function Shell({ children }: { children: ReactNode }) {
   const hash = useHashRoute();
+  const identity = useIdentity();
 
   return (
     <div className="flex h-full">
       <aside className="hidden w-[218px] shrink-0 flex-col gap-1 border-r border-border bg-side p-3 md:flex">
         <button onClick={() => navigate("#/")} className="mb-2 flex items-center gap-2.5 px-1.5 py-1 text-left">
-          <img src="/brand/Mistral-Icon-Gradient-RGB.svg" alt="" className="size-7 shrink-0" />
+          <Mark className="size-7 shrink-0 text-fg" />
           <span className="leading-tight">
-            <span className="block text-[15px] font-bold tracking-tight text-fg">Boucle</span>
+            <span className="block text-[15px] font-bold tracking-tight text-fg">{identity.appName}</span>
           </span>
         </button>
 
@@ -144,11 +152,13 @@ export function Shell({ children }: { children: ReactNode }) {
           <BudgetMeter />
           <div className="flex items-center gap-2 px-1.5 py-1">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-[10px] font-bold text-fg">
-              NB
+              {initials(identity.ownerName)}
             </span>
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-xs font-semibold text-fg">Nora Bellier</span>
-              <span className="block truncate text-[10px] text-dim">Brumeline · chief of staff</span>
+              <span className="block truncate text-xs font-semibold text-fg">{identity.ownerName || "Owner"}</span>
+              <span className="block truncate text-[10px] text-dim">
+                {identity.orgName ? `${identity.orgName} · chief of staff` : "chief of staff"}
+              </span>
             </span>
             <ThemeToggle />
           </div>
@@ -158,7 +168,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {/* Mobile: slim top bar with icon nav. */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1 border-b border-border bg-side px-3 py-2 md:hidden">
-          <img src="/brand/Mistral-Icon-Gradient-RGB.svg" alt="" className="mr-1 size-6" />
+          <Mark className="mr-1 size-6 text-fg" />
           <NavLinks hash={hash} compact />
           <span className="ml-auto" />
           <button

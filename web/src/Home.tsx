@@ -31,7 +31,7 @@ import {
   type TicketPriority,
 } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
-import { navigate, useOpenTickets, useProjects } from "./hooks.ts";
+import { navigate, useIdentity, useOpenTickets, useProjects } from "./hooks.ts";
 import {
   BUCKET_RANK,
   BucketSelect,
@@ -471,6 +471,7 @@ function isOnBoard(p: ProjectSummary): boolean {
 }
 
 export function Home() {
+  const identity = useIdentity();
   const { projects, status, refresh } = useProjects();
   const { tickets: openTickets, refresh: refreshOpen } = useOpenTickets();
   const [activity, setActivity] = useState<ActivityRow[]>([]);
@@ -616,7 +617,8 @@ export function Home() {
             {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
           </p>
           <h1 className="text-[22px] font-bold tracking-tight text-fg">
-            {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"}, Nora
+            {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening"}
+            {identity.ownerName ? `, ${identity.ownerName.split(" ")[0]}` : ""}
           </h1>
           <p className="mt-0.5 text-xs tabular-nums text-muted">
             {board.length} projects · {activeCount} active · {sleepingCount} sleeping
@@ -655,7 +657,7 @@ export function Home() {
       >
         <PlusIcon className="size-4 text-dim" />
         <span className="flex-1 text-sm text-muted">
-          Empty your head… idea, task, conv, scope — Boucle files it in the right project
+          Empty your head… idea, task, conv, scope — {identity.appName} files it in the right project
         </span>
         <MicIcon className="size-4 text-dim" />
         <kbd className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] text-muted">⌘K</kbd>

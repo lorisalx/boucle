@@ -2,9 +2,11 @@ import { ArrowLeftIcon, BotIcon, Loader2Icon, SendIcon, WrenchIcon } from "lucid
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type ChatTranscript } from "./api.ts";
+import { useIdentity } from "./hooks.ts";
 import { Button, ThemeToggle, cx } from "./ui.tsx";
 
 export function Chat({ conversationId }: { conversationId: string }) {
+  const identity = useIdentity();
   const [chat, setChat] = useState<ChatTranscript | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -67,7 +69,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
                     <WrenchIcon className="size-3" /> {entry.text}
                   </span>
                 </summary>
-                <p className="mt-1 text-center">Mistral Boucle executed this call locally.</p>
+                <p className="mt-1 text-center">{identity.appName} executed this call locally.</p>
               </details>
             );
           }

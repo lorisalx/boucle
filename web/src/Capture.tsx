@@ -25,6 +25,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type ProjectSummary, type TicketKind } from "./api.ts";
+import { useIdentity } from "./hooks.ts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,7 @@ export function openCapture(project?: string | null): void {
 }
 
 export function CaptureModal() {
+  const identity = useIdentity();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [kind, setKind] = useState<TicketKind>("idea");
@@ -392,7 +394,7 @@ export function CaptureModal() {
             </DropdownMenuTrigger>
             <DropdownMenuContent className="max-h-72 w-56">
               <DropdownMenuItem onClick={() => setProject("")}>
-                <SparklesIcon className="size-3.5 text-accent-text" /> Auto — Boucle routes it
+                <SparklesIcon className="size-3.5 text-accent-text" /> Auto — {identity.appName} routes it
                 {project === "" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setProject("__misc")}>

@@ -1,9 +1,10 @@
 {
-  "name": "mistral-boucle",
+  "name": "boucle",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Boucle rebuilt on the Mistral stack: Vibe CLI, Devstral, Voxtral, and the Agents API.",
+  "description": "Boucle — a self-hostable chief-of-staff loop: capture, tickets, agent loops, and a searchable brain.",
+  "license": "Apache-2.0",
   "bin": {
     "boucle": "src/cli.ts"
   },

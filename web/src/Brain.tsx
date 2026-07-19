@@ -29,7 +29,8 @@ import {
   MessageScrollerViewport,
 } from "./components/ui/message-scroller.tsx";
 import { BrainMarkdown, type WikiLinkProps } from "./Markdown.tsx";
-import { Button, Tag, cx } from "./ui.tsx";
+import { useIdentity } from "./hooks.ts";
+import { Button, Mark, Tag, cx } from "./ui.tsx";
 
 const STORAGE_KEY = "brainChatId";
 const PREFILL_KEY = "brainPrefill";
@@ -82,6 +83,7 @@ function ToolMarker({ entry }: { entry: ChatEntry }) {
 }
 
 export function Brain() {
+  const identity = useIdentity();
   const [conversationId, setConversationId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [draft, setDraft] = useState("");
@@ -186,9 +188,11 @@ export function Brain() {
             <MessageScrollerContent className="mx-auto w-full max-w-3xl px-5 py-6">
               {!hasMessages && !loading ? (
                 <div className="flex min-h-[46vh] flex-col items-center justify-center gap-4 text-center">
-                  <img src="/brand/Mistral-Icon-Gradient-RGB.svg" alt="" className="size-14" />
+                  <Mark className="size-14 text-fg" />
                   <div className="space-y-1">
-                    <h2 className="text-lg font-semibold text-fg">Ask anything about Brumeline&apos;s projects, meetings, and tickets.</h2>
+                    <h2 className="text-lg font-semibold text-fg">
+                      Ask anything about {identity.orgName ? `${identity.orgName}'s` : "your"} projects, meetings, and tickets.
+                    </h2>
                     <p className="text-sm text-muted">The brain only answers from search and read-only Boucle tools.</p>
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">

@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api, type SearchResponse, type SearchSource } from "./api.ts";
+import { useIdentity } from "./hooks.ts";
 import { Tag, cx, type Tone } from "./ui.tsx";
 
 const EMPTY_COUNTS: SearchResponse["counts"] = { ticket: 0, event: 0, meeting: 0, brain: 0 };
@@ -34,6 +35,7 @@ function assignResult(url: string): void {
 }
 
 export function Palette() {
+  const identity = useIdentity();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState<SearchResponse | null>(null);
@@ -152,7 +154,7 @@ export function Palette() {
       <section
         role="dialog"
         aria-modal="true"
-        aria-label="Search Boucle"
+        aria-label={`Search ${identity.appName}`}
         className="flex max-h-[76vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-[var(--float)]"
       >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">

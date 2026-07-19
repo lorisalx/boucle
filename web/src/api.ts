@@ -58,7 +58,12 @@ export interface TicketEvent {
 }
 
 export interface Settings {
-  mistralConfigured: boolean;
+  appName: string;
+  ownerName: string;
+  orgName: string;
+  demoMode: boolean;
+  providerName: string;
+  providerConfigured: boolean;
 }
 
 export interface ChatEntry {

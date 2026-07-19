@@ -32,7 +32,7 @@ import {
   api,
 } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
-import { navigate, useHashRoute, useProjects } from "./hooks.ts";
+import { navigate, useHashRoute, useIdentity, useProjects } from "./hooks.ts";
 import { isMistralConversationId, useActions } from "./Home.tsx";
 import { BrainMarkdown, renderInline, type WikiLinkProps } from "./Markdown.tsx";
 import {
@@ -406,6 +406,7 @@ function ConnectionsView({ backlinks, wiki }: { backlinks: Backlink[]; wiki: Wik
 // ===============================
 
 export function Projects() {
+  const identity = useIdentity();
   const { projects, status, refresh } = useProjects();
   const hash = useHashRoute();
   const routeId = useMemo(() => {
@@ -682,7 +683,7 @@ export function Projects() {
                     <BrainMarkdown text={detail.page.body} wiki={wiki} skipSections={["Timeline"]} />
                   ) : (
                     <p className="py-6 text-sm text-muted">
-                      No gbrain page for this project yet — it only exists as Boucle tickets. Create
+                      No brain page for this project yet — it only exists as {identity.appName} tickets. Create
                       <code className="mx-1 rounded-sm bg-fg/[0.07] px-1 font-mono text-xs">brain/projects/{selected.projectId}.md</code>
                       to give it one.
                     </p>
@@ -725,7 +726,7 @@ export function Projects() {
             ))}
             {selected && selected.openTickets.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted">
-                No open Boucle tickets for this project.
+                No open {identity.appName} tickets for this project.
               </p>
             ) : null}
           </div>

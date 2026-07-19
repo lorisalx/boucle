@@ -29,6 +29,16 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+/** Boucle's neutral loop-glyph mark (currentColor, no gradient). Inline SVG so it themes with `color`. */
+export function Mark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 3v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /**
  * Courant d'air: statuses read as soft tinted pills — a warm tinted fill with
  * deep text of the same hue, never the brand accent. `tone` picks the semantic

@@ -1,9 +1,10 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import type { Identity } from "./identity.ts";
 
-// mistral-boucle runs side-by-side with real Boucle: its own port, DB, and a
-// synthetic brain. Nothing here may ever point at the real brain or real DB.
+// Boucle server config: env-driven paths and constants (port, DB, brain dir, guardrails).
+// Loaded from .env at the repo root when present, else from the process environment.
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
 try {
@@ -12,39 +13,30 @@ try {
   // no .env — MISTRAL_API_KEY must come from the environment
 }
 
-const REAL_BRAIN_DIR = join(homedir(), "Documents", "dataiku", "brain");
-const REAL_BOUCLE_DIR = join(homedir(), ".boucle");
-
-function forbid(path: string, forbiddenRoot: string, what: string): void {
-  const p = resolve(path);
-  if (p === forbiddenRoot || p.startsWith(forbiddenRoot + "/")) {
-    throw new Error(
-      `mistral-boucle refuses to boot: ${what} resolves to ${p}, inside the real ${forbiddenRoot}. ` +
-        `This instance must stay fully synthetic.`,
-    );
-  }
+function defaultDbDir(): string {
+  const xdg = (process.env.XDG_DATA_HOME ?? "").trim();
+  return xdg.length > 0 ? join(xdg, "boucle") : join(homedir(), ".local", "share", "boucle");
 }
 
-/** DB path: explicit arg | $BOUCLE_DB | ~/.mistral-boucle/boucle.db (dir created). */
+const LEGACY_DB_PATH = join(homedir(), ".mistral-boucle", "boucle.db");
+
+/** DB path: explicit arg | $BOUCLE_DB | $XDG_DATA_HOME/boucle/boucle.db (dir created). */
 export function resolveDbPath(explicit?: string | undefined): string {
   const candidate = (explicit ?? process.env.BOUCLE_DB ?? "").trim();
-  const path = candidate.length > 0 ? candidate : join(homedir(), ".mistral-boucle", "boucle.db");
-  forbid(path, REAL_BOUCLE_DIR, "the DB path");
+  const path = candidate.length > 0 ? candidate : join(defaultDbDir(), "boucle.db");
+  if (candidate.length === 0 && !existsSync(path) && existsSync(LEGACY_DB_PATH)) {
+    process.stdout.write(`[boucle] found a legacy DB at ${LEGACY_DB_PATH}; set BOUCLE_DB to keep using it.\n`);
+  }
   mkdirSync(dirname(path), { recursive: true });
   return path;
 }
 
 export const BOUCLE_PORT = Number.parseInt(process.env.BOUCLE_PORT ?? "4419", 10);
 
-/**
- * The synthetic brain root — `$BOUCLE_BRAIN_DIR ?? <repo>/fake-brain`. Guarded so it
- * can never resolve inside the real gbrain.
- */
+/** The brain root — `$BOUCLE_BRAIN_DIR ?? <repo>/fake-brain` (the bundled demo dataset). */
 export function resolveBrainDir(): string {
   const base = (process.env.BOUCLE_BRAIN_DIR ?? "").trim();
-  const dir = base.length > 0 ? base : join(REPO_ROOT, "fake-brain");
-  forbid(dir, REAL_BRAIN_DIR, "the brain dir");
-  return dir;
+  return base.length > 0 ? base : join(REPO_ROOT, "fake-brain");
 }
 
 /**
@@ -55,13 +47,19 @@ export function resolveMeetingsDir(): string {
   return join(resolveBrainDir(), "meetings");
 }
 
-/** Startup instructions appended to every Mistral conversation Boucle spawns. */
-export const SPAWNED_CHAT_GUARDRAILS = `Before anything else, on this first turn:
-- Context: read the relevant files in fake-brain/ for this ticket's topic, project, requester, and recent meetings so you work from current Brumeline knowledge instead of assumptions.
+/** Startup instructions appended to every provider conversation Boucle spawns. */
+export function spawnedChatGuardrails(identity: Identity): string {
+  const brainRef = identity.demoMode ? "fake-brain/" : "the brain";
+  const knowledgeRef = identity.orgName ? `current ${identity.orgName} knowledge` : "current knowledge";
+  const approver = identity.ownerName ? `${identity.ownerName}'s explicit approval` : "explicit approval from the owner";
+  const prodScope = identity.orgName ? ` in ${identity.orgName}'s production environment` : "";
+  return `Before anything else, on this first turn:
+- Context: read the relevant files in ${brainRef} for this ticket's topic, project, requester, and recent meetings so you work from ${knowledgeRef} instead of assumptions.
 
 Then, two hard rules for the rest of this conversation:
-- Outbound communication: do NOT send a channel post, thread reply, email, direct message, invitation, or scheduled message without Nora Bellier's explicit approval. Reading and drafting are fine; show the destination and exact text, then wait.
-- Production changes: do NOT deploy, restart, publish, migrate, alter production data, or run a data-writing job in Brumeline's production environment without Nora Bellier's explicit approval. Inspection and dry-runs are fine; state exactly what will change and where, then wait.`;
+- Outbound communication: do NOT send a channel post, thread reply, email, direct message, invitation, or scheduled message without ${approver}. Reading and drafting are fine; show the destination and exact text, then wait.
+- Production changes: do NOT deploy, restart, publish, migrate, alter production data, or run a data-writing job${prodScope} without ${approver}. Inspection and dry-runs are fine; state exactly what will change and where, then wait.`;
+}
 
 /** Presence only; the API key itself is never returned to the web UI or persisted in sqlite. */
 export function isMistralConfigured(): boolean {

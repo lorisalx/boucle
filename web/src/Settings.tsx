@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 
 import { api } from "./api.ts";
+import { useIdentity } from "./hooks.ts";
 import { Button, Status } from "./ui.tsx";
 
 export function Settings() {
-  const [mistralConfigured, setMistralConfigured] = useState(false);
+  const identity = useIdentity();
+  const [providerConfigured, setProviderConfigured] = useState(false);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api.settings().then((s) => {
-      setMistralConfigured(s.mistralConfigured);
+      setProviderConfigured(s.providerConfigured);
     });
     api.mcpInfo().then(setMcp).catch(() => {});
   }, []);
@@ -32,11 +34,11 @@ export function Settings() {
           <h2 className="text-sm font-medium text-fg">Mistral</h2>
           <p className="mt-1 text-xs text-muted">
             Spawned chats use the Conversations API. Set <code className="font-mono">MISTRAL_API_KEY</code> in
-            the server environment; Boucle never exposes or stores the key.
+            the server environment; {identity.appName} never exposes or stores the key.
           </p>
           <div className="mt-3">
-            <Status tone={mistralConfigured ? "success" : "neutral"}>
-              API key {mistralConfigured ? "present" : "not configured"}
+            <Status tone={providerConfigured ? "success" : "neutral"}>
+              API key {providerConfigured ? "present" : "not configured"}
             </Status>
           </div>
         </div>

@@ -8,6 +8,8 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { resolveBrainDir } from "./config.ts";
+import { getIdentity, type Identity } from "./identity.ts";
 
 export type TicketStatus =
   | "inbox"
@@ -320,21 +322,25 @@ function toLoop(row: RawLoop): Loop {
   return { ...row, enabled: row.enabled === 1 };
 }
 
-/** Default chief-of-staff heartbeat loop, seeded on first boot. */
-export const DEFAULT_CHIEF_PROMPT = `Act as a lightweight chief of staff for Nora Bellier, Brumeline's Head of Product. Use only the
-synthetic material in fake-brain/ plus Boucle's MCP tools. Keep project knowledge current and prioritize
+/** Default chief-of-staff heartbeat loop prompt, seeded (interpolated) on first boot. */
+export function defaultChiefPrompt(identity: Identity): string {
+  const owner = identity.ownerName || "the owner";
+  const forOrg = identity.orgName ? ` for ${identity.orgName}` : "";
+  const material = identity.demoMode ? "the synthetic material in fake-brain/" : "the material in the brain";
+  const brainWord = identity.demoMode ? "fake-brain" : "brain";
+  const peopleFocus = identity.demoMode
+    ? "Pay particular attention to work involving Camille Dervaux, Émile Rousset, Inès Marceau, Théo Valmont, Maëlle Courtois, and Bastien Leroux. "
+    : "";
+  const scopeLine = identity.demoMode
+    ? `\n\n${owner} owns product delivery across ${identity.orgName}'s customer-operations platform: Renewal Signal, Partner Portal, Onboarding Copilot, Hélium Migration, Permissions Core, and Usage Observatory. Other people's action items are not ${owner}'s tickets, even when they appear in a meeting they attended.`
+    : `\n\nOther people's action items are not ${owner}'s tickets, even when they appear in a meeting they attended.`;
+  return `Act as a lightweight chief of staff${forOrg}. Use only ${material} plus Boucle's MCP tools. Keep project knowledge current and prioritize
 pending asks, blockers, decisions, launch changes, access issues, and review requests. Review recent local
-activity broadly: project notes, meeting notes, ticket history, Nora's own replies, and ordinary team updates.
-Do not treat triage as only a keyword-search problem; read the relevant context directly. Pay particular
-attention to work involving Camille Dervaux, Émile Rousset, Inès Marceau, Théo Valmont, Maëlle Courtois,
-and Bastien Leroux. An ask directed at Nora counts whether or not her name is stated explicitly. Record
-durable signals on the relevant fake-brain project pages. Stay quiet if nothing meaningful changed. Outside
-Monday-Friday 08:00-18:00 Europe/Paris, return DONT_NOTIFY unless the current thread already contains an
-urgent issue.
-
-Nora owns product delivery across Brumeline's customer-operations platform: Renewal Signal, Partner Portal,
-Onboarding Copilot, Hélium Migration, Permissions Core, and Usage Observatory. Other people's
-action items are not Nora's tickets, even when they appear in a meeting she attended.
+activity broadly: project notes, meeting notes, ticket history, ${owner}'s own replies, and ordinary team updates.
+Do not treat triage as only a keyword-search problem; read the relevant context directly. ${peopleFocus}An ask
+directed at ${owner} counts whether or not their name is stated explicitly. Record durable signals on the
+relevant ${brainWord} project pages. Stay quiet if nothing meaningful changed. Outside Monday-Friday 08:00-18:00
+Europe/Paris, return DONT_NOTIFY unless the current thread already contains an urgent issue.${scopeLine}
 
 Work the queue via the MCP tools (never send an outbound message):
 - Before creating a ticket, use brain_search to find and merge overlapping tickets or existing brain context.
@@ -342,52 +348,66 @@ Work the queue via the MCP tools (never send an outbound message):
   meeting, and ticket history. Use ticket_transition to mark work done or dropped when it was handled, became
   obsolete, or belongs to another teammate. Always pass a one-line \`reason\`, and set \`workRef\` when a
   local project artifact records the resolution. Read before closing; when unsure, leave it open.
-- Create tickets only for action items Nora herself must do. Skip other teammates' commitments, FYIs, and
-  announcements. Use ticket_upsert with an idempotent synthetic dedupeKey. Give each ticket a short imperative
-  title, appropriate priority, matching fake-brain project slug, needs, requester slug, and one concrete next
-  action. Meeting and project signals may update the fake brain without becoming tickets.
+- Create tickets only for action items ${owner} must personally do. Skip other teammates' commitments, FYIs, and
+  announcements. Use ticket_upsert with an idempotent dedupeKey. Give each ticket a short imperative
+  title, appropriate priority, matching ${brainWord} project slug, needs, requester slug, and one concrete next
+  action. Meeting and project signals may update the ${brainWord} without becoming tickets.
 - Use source_seen to skip already-classified signals and mark_source_seen to record decisions.
 - For actionable tickets with needs=codex or needs=claude and no linked thread, call spawn_chat once. Let
   spawn_chat set the thread link; never write threadId by hand.
 - Call reprioritize once at the end. Keep it to about 12 tickets per run; prefer precision over recall.`;
+}
 
-export const DEFAULT_MEETINGS_PROMPT = `Process freshly recorded synthetic meeting transcripts for Nora Bellier. The recorder drops raw markdown
-files in fake-brain/meetings/ with YAML frontmatter containing \`processed: false\`. Turn each unprocessed
-transcript into a clean meeting note and create Boucle tickets for Nora's own action items.
+export function defaultMeetingsPrompt(identity: Identity): string {
+  const owner = identity.ownerName || "the owner";
+  const brainDir = resolveBrainDir();
+  const transcriptWord = identity.demoMode ? "synthetic meeting" : "meeting";
+  const peopleTag = identity.demoMode ? "fictional " : "";
+  return `Process freshly recorded ${transcriptWord} transcripts for ${owner}. The recorder drops raw markdown
+files in ${brainDir}/meetings/ with YAML frontmatter containing \`processed: false\`. Turn each unprocessed
+transcript into a clean meeting note and create Boucle tickets for ${owner}'s own action items.
 
 Do exactly this each run:
-1. List fake-brain/meetings/*.md and open only files whose frontmatter has \`processed: false\`. If none exist,
+1. List ${brainDir}/meetings/*.md and open only files whose frontmatter has \`processed: false\`. If none exist,
    return DONT_NOTIFY without touching curated notes.
-2. Read each selected transcript in full. Remote recordings use \`**Me:**\` for Nora and \`**Them:**\` for
+2. Read each selected transcript in full. Remote recordings use \`**Me:**\` for ${owner} and \`**Them:**\` for
    everyone else. Single-track recordings may have no speaker labels; use attendees_raw and context without
    inventing attribution.
 3. Rewrite the file in place in the existing house style. Preserve the YAML frontmatter, resolve attendees to
-   fictional \`people/<slug>\` values, keep title and call_link, add tags and related_projects, and set
+   ${peopleTag}\`people/<slug>\` values, keep title and call_link, add tags and related_projects, and set
    \`processed: true\`. Add a title, summary blockquote, Key points, Decisions, Action items with owners, and
    Connections with people/project wikilinks. Preserve the raw transcript under a collapsed Transcript section.
 4. Before creating anything, use brain_search to dedupe and merge against existing tickets and brain context.
-   Create a ticket only for action items Nora committed to. Use ticket_upsert with dedupeKey
+   Create a ticket only for action items ${owner} committed to. Use ticket_upsert with dedupeKey
    "meeting:<filename>:<n>", a short imperative title, priority from urgency, the matching project slug,
    suitable needs, requester, and one concrete next action. Use source "manual". Do not invent tasks.
-5. Update the relevant fake-brain project pages with durable meeting signals, then trigger the local reindex shim.
+5. Update the relevant project pages under ${brainDir} with durable meeting signals, then trigger the local reindex shim.
 6. Call reprioritize once. Summarize which meetings were processed and how many tickets were created, or return
    DONT_NOTIFY when there was nothing to process.`;
+}
 
-export const DEFAULT_TIMELINE_SCRIBE_PROMPT = `Keep fake-brain project timelines current from Boucle ticket activity so the Projects page reflects what
-the Brumeline team actually shipped.
+export function defaultTimelineScribePrompt(identity: Identity): string {
+  const brainDir = resolveBrainDir();
+  const teamRef = identity.orgName ? `the ${identity.orgName} team` : "the team";
+  const noopLine = identity.demoMode
+    ? "4. After any edit, run scripts/gbrain-noop import fake-brain. It is intentionally a local no-op for this demo."
+    : "4. After any edit, run the configured brain reindex step if one exists.";
+  return `Keep project timelines under ${brainDir} current from Boucle ticket activity so the Projects page reflects what
+${teamRef} actually shipped.
 
 Do exactly this each run:
 1. Call ticket_list with status "done", then status "dropped". Keep only tickets updated in the last 24 hours
    that have a project slug. If none qualify, return DONT_NOTIFY.
-2. Open fake-brain/projects/<slug>.md for each affected project and read its "## Timeline" section. For each
+2. Open ${brainDir}/projects/<slug>.md for each affected project and read its "## Timeline" section. For each
    meaningful completion — something shipped, decided, fixed, or unblocked — append one entry in the format
    \`- **YYYY-MM-DD** | <past-tense one-liner>\`. Skip dropped noise, snooze churn, and trivia. Include workRef
    when useful and combine related same-day completions naturally.
 3. Before writing, use brain_search to dedupe and merge against existing tickets and brain context, then check
    the full page for the event. Append only, never rewrite or delete existing entries,
    keep oldest-first order, and create "## Timeline" only when missing.
-4. After any edit, run scripts/gbrain-noop import fake-brain. It is intentionally a local no-op for this demo.
+${noopLine}
 5. Summarize which pages changed, or return DONT_NOTIFY if none did.`;
+}
 
 interface SeedTicket extends UpsertTicketInput {
   status: TicketStatus;
@@ -511,7 +531,7 @@ const DEFAULT_TICKETS: SeedTicket[] = [
     needs: "human",
     effort: "xs",
     nextAction: "Add the failure threshold to the runbook.",
-    workRef: "https://brumeline.example/runbooks/helium-rollback",
+    workRef: "https://example.com/runbooks/helium-rollback",
   },
   {
     dedupeKey: "seed:permissions-core:matrix",
@@ -795,7 +815,7 @@ const HISTORICAL_TICKETS: SeedTicket[] = [
     priority: "high",
     project: "permissions-core",
     source: "manual",
-    requester: "people/nora-bellier",
+    requester: "people/emile-rousset",
     needs: "human",
     effort: "m",
     nextAction: "Manager-role edge cases moved to an open ticket.",
@@ -947,12 +967,15 @@ export class BoucleStore {
 
   /** Insert the default loops, so a fresh install has working loops. Idempotent per loop name. */
   private seedLoops(): void {
+    const identity = getIdentity();
     const count = this.db.prepare(`SELECT COUNT(*) AS n FROM loops`).get() as { n: number };
     if (count.n === 0) {
       this.createLoop({
         name: "Chief of staff",
-        description: "Capture and rank materially new asks from Brumeline's synthetic activity.",
-        prompt: DEFAULT_CHIEF_PROMPT,
+        description: identity.orgName
+          ? `Capture and rank materially new asks from ${identity.orgName}'s activity.`
+          : "Capture and rank materially new asks from recent activity.",
+        prompt: defaultChiefPrompt(identity),
         enabled: false,
         intervalMinutes: 60,
         activeDays: "Mon,Tue,Wed,Thu,Fri",
@@ -965,8 +988,8 @@ export class BoucleStore {
     }
     this.ensureLoopByName("Meetings", () => ({
       name: "Meetings",
-      description: "Summarize synthetic meeting transcripts and file Nora's action items as tickets.",
-      prompt: DEFAULT_MEETINGS_PROMPT,
+      description: `Summarize ${identity.demoMode ? "synthetic " : ""}meeting transcripts and file ${identity.ownerName || "the owner"}'s action items as tickets.`,
+      prompt: defaultMeetingsPrompt(identity),
       enabled: false,
       // Weekdays only (no meetings on weekends), any hour a transcript lands.
       intervalMinutes: 60,
@@ -980,8 +1003,8 @@ export class BoucleStore {
     }));
     this.ensureLoopByName("Project timelines", () => ({
       name: "Project timelines",
-      description: "Write done-ticket outcomes into the gbrain project pages' ## Timeline sections.",
-      prompt: DEFAULT_TIMELINE_SCRIBE_PROMPT,
+      description: "Write done-ticket outcomes into the brain's project pages' ## Timeline sections.",
+      prompt: defaultTimelineScribePrompt(identity),
       enabled: false,
       // Twice a working day is plenty — timelines are a digest, not a live feed.
       intervalMinutes: 360,

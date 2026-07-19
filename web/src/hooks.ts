@@ -1,6 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type Loop, type Meeting, type ProjectSummary, type Ticket } from "./api.ts";
+import { api, type Loop, type Meeting, type ProjectSummary, type Settings, type Ticket } from "./api.ts";
+
+const IDENTITY_FALLBACK: Settings = {
+  appName: "Boucle",
+  ownerName: "",
+  orgName: "",
+  demoMode: false,
+  providerName: "mistral",
+  providerConfigured: false,
+};
+
+let identityCache: Settings | null = null;
+let identityPromise: Promise<Settings> | null = null;
+
+/** Boucle's identity (appName/ownerName/orgName/…), fetched once and cached for the app's lifetime. */
+export function useIdentity(): Settings {
+  const [identity, setIdentity] = useState<Settings>(identityCache ?? IDENTITY_FALLBACK);
+  useEffect(() => {
+    if (identityCache) return;
+    identityPromise ??= api.settings();
+    identityPromise.then((s) => {
+      identityCache = s;
+      setIdentity(s);
+    }).catch(() => undefined);
+  }, []);
+  return identity;
+}
 
 /** Poll the open-ticket snapshot (live-ish) + expose a manual refresh. */
 export function useOpenTickets(): {

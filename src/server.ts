@@ -13,7 +13,8 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
-import { BOUCLE_PORT, SPAWNED_CHAT_GUARDRAILS, isMistralConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { BOUCLE_PORT, spawnedChatGuardrails, isMistralConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { getIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
   type CreateLoopInput,
@@ -147,15 +148,25 @@ app.post("/api/projects/:id/brief", async (c) => {
   }
 });
 
+/** "<owner>, <org>'s chief of staff," opening clause for spawned prompts; degrades gracefully when unset. */
+function ownerIntro(identity: Identity): string {
+  if (!identity.ownerName) return "The owner";
+  if (!identity.orgName) return identity.ownerName;
+  return `${identity.ownerName}, ${identity.orgName}'s chief of staff,`;
+}
+
 function buildBriefPrompt(p: ProjectSummary): string {
+  const identity = getIdentity();
+  const owner = identity.ownerName || "the owner";
+  const brainRef = identity.demoMode ? "synthetic brain" : "brain";
   const tickets = p.openTickets
     .map((t) => `- [${t.status}] ${t.title}${t.nextAction ? ` — next: ${t.nextAction}` : ""}`)
     .join("\n");
   return [
-    `Brief Nora on the "${p.title}" project (synthetic brain slug: projects/${p.projectId}). She wants to walk into it cold and know exactly where it stands.`,
+    `Brief ${owner} on the "${p.title}" project (${brainRef} slug: projects/${p.projectId}) so they can walk into it cold and know exactly where it stands.`,
     "",
     "Do this, read-only:",
-    `1. Use project_page_read for ${p.projectId}. Work only from the synthetic project page and Boucle tickets available through your tools.`,
+    `1. Use project_page_read for ${p.projectId}. Work only from the ${identity.demoMode ? "synthetic " : ""}project page and Boucle tickets available through your tools.`,
     "2. Cross-check the open Boucle tickets below against the page's State/Timeline.",
     "",
     "Open Boucle tickets:",
@@ -163,7 +174,7 @@ function buildBriefPrompt(p: ProjectSummary): string {
     "",
     "Then reply with a tight brief: current state in two sentences, what moved in the last two weeks, open blockers/questions, and the 3 most valuable next actions (say which are already tracked as tickets). Do not create or modify tickets, and do not edit the brain in this chat.",
     "",
-    SPAWNED_CHAT_GUARDRAILS,
+    spawnedChatGuardrails(identity),
   ].join("\n");
 }
 
@@ -336,8 +347,15 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
 });
 
 app.get("/api/settings", (c) => {
+  const identity = getIdentity();
   return c.json({
-    mistralConfigured: isMistralConfigured(),
+    appName: identity.appName,
+    ownerName: identity.ownerName,
+    orgName: identity.orgName,
+    demoMode: identity.demoMode,
+    // providerName/providerConfigured are wired to the real provider abstraction in workstream 2.
+    providerName: "mistral",
+    providerConfigured: isMistralConfigured(),
   });
 });
 
@@ -407,13 +425,16 @@ app.post("/api/epics", async (c) => {
 
 /** Micro-run prompt: file one just-captured, project-less item into the right project. */
 function buildRoutePrompt(t: Ticket): string {
+  const identity = getIdentity();
   const brainDir = resolveBrainDir();
+  const brainRef = identity.demoMode ? "synthetic brain" : "brain";
+  const orgPossessive = identity.orgName ? `${identity.orgName}'s ` : "";
   const projects = listProjects(store.listOpen(), store.listProjectMeta())
     .filter((p) => p.status === "in_progress" || p.status === "scoping" || p.openTicketCount > 0)
     .map((p) => `- ${p.projectId} — ${p.title}${p.summary ? ` — ${p.summary.slice(0, 120)}` : ""}`)
     .join("\n");
   return [
-    "Nora Bellier, Brumeline's chief of staff, quick-captured a single item in Boucle without picking a project. Give it a home.",
+    `${ownerIntro(identity)} quick-captured a single item in Boucle without picking a project. Give it a home.`,
     "",
     `Item: ticketId ${t.ticketId} | kind ${t.kind} | title: ${t.title}`,
     "",
@@ -422,8 +443,8 @@ function buildRoutePrompt(t: Ticket): string {
     "",
     "Do this:",
     "1. If the title clearly belongs to ONE project from the list, call ticket_set(ticketId, { project: <slug> }).",
-    `   You may skim only Brumeline's synthetic brain notes under ${brainDir} to disambiguate,`,
-    "   but do NOT open an external connector or read files outside that synthetic brain.",
+    `   You may skim only ${orgPossessive}${brainRef} notes under ${brainDir} to disambiguate,`,
+    `   but do NOT open an external connector or read files outside that ${brainRef}.`,
     "2. If it is genuinely cross-project or unclear, do nothing — leaving it in misc is correct.",
     "3. At most one ticket_set. Never create tickets, never change the title, never message anyone.",
   ].join("\n");
@@ -481,11 +502,15 @@ app.post("/api/capture/voice", async (c) => {
 app.get("/api/capture/smart", (c) => c.json(scheduler.listSmartRuns()));
 
 function buildSmartCapturePrompt(text: string, preset: string | null, projects: string, batchId: string): string {
+  const identity = getIdentity();
   const brainDir = resolveBrainDir();
+  const brainRef = identity.demoMode ? "synthetic brain" : "brain";
+  const orgPossessive = identity.orgName ? `${identity.orgName}'s ` : "";
+  const pastedRef = identity.demoMode ? "synthetic text" : "text";
   return [
-    "Nora Bellier, Brumeline's chief of staff, pasted synthetic text into Boucle's quick-capture.",
+    `${ownerIntro(identity)} pasted ${pastedRef} into Boucle's quick-capture.`,
     "Parse it into Boucle items using the boucle MCP tools. Work from the text itself and, only when",
-    `needed, Brumeline's synthetic brain under ${brainDir}. Do not read outside it or message anyone.`,
+    `needed, ${orgPossessive}${brainRef} under ${brainDir}. Do not read outside it or message anyone.`,
     "",
     "Pasted text:",
     '"""',
@@ -529,9 +554,12 @@ app.post("/api/tickets/:id/enrich", async (c) => {
 
 /** Prompt for a one-shot Vibe run that re-investigates a ticket with a human correction note. */
 function buildEnrichPrompt(t: Ticket, note: string): string {
+  const identity = getIdentity();
   const brainDir = resolveBrainDir();
+  const brainRef = identity.demoMode ? "synthetic brain" : "brain";
+  const ownerPossessive = identity.ownerName ? `${identity.ownerName}'s` : "The owner's";
   const lines = [
-    "Nora Bellier, Brumeline's chief of staff, reviewed this captured ticket and added a correction/context note.",
+    `${ownerIntro(identity)} reviewed this captured ticket and added a correction/context note.`,
     "Re-investigate it, then update the SAME ticket in place — never create a duplicate.",
     "",
     "Ticket:",
@@ -546,20 +574,20 @@ function buildEnrichPrompt(t: Ticket, note: string): string {
   if (t.body.trim().length > 0) lines.push("", "Current body:", t.body.trim());
   lines.push(
     "",
-    "Nora's note (authoritative — apply the corrections it states):",
+    `${ownerPossessive} note (authoritative — apply the corrections it states):`,
     note.length > 0 ? note : "(no note — just dig for more context)",
     "",
     "Do this:",
     "1. Take the note as ground truth: fix the project slug, who people actually are, the real ask, etc.",
-    `2. Search only Brumeline's synthetic brain in ${brainDir} for context that completes the picture: the real ask, ` +
+    `2. Search only the ${brainRef} in ${brainDir} for context that completes the picture: the real ask, ` +
       "who's involved, the blocker, the deadline, the right project, and one concrete next action.",
     "3. Call ticket_get(ticketId) for the latest, then ticket_set(ticketId, …) to correct " +
       "title/body/project/requester/needs/priority/nextAction. Use ticket_upsert only if the dedupeKey/source identity must change.",
-    "4. Always feed the gbrain. Treat every correction here as a durable signal: whenever the note or your " +
+    "4. Always feed the brain. Treat every correction here as a durable signal: whenever the note or your " +
       "findings surface a project, an identity (who someone really is, aliases), ownership, a decision, a blocker, " +
-      `or a relationship that outlives this ticket, write it into the relevant synthetic brain note under ${brainDir} ` +
-      "(create the note if none fits) and reindex the synthetic brain. " +
-      "When in doubt, capture it — bias toward persisting. If you spot adjacent gbrain notes worth updating or " +
+      `or a relationship that outlives this ticket, write it into the relevant ${brainRef} note under ${brainDir} ` +
+      `(create the note if none fits) and reindex the ${brainRef}. ` +
+      "When in doubt, capture it — bias toward persisting. If you spot adjacent brain notes worth updating or " +
       "creating beyond this ticket, do so and say which.",
     "5. Stay idempotent: update this ticketId, never spawn a second ticket for the same thing.",
     "6. Call reprioritize when done. Do not message anyone.",
@@ -569,9 +597,12 @@ function buildEnrichPrompt(t: Ticket, note: string): string {
 
 /** First-turn prompt for a manually-created task: research it, then write its description in place. */
 function buildDescribePrompt(t: Ticket): string {
+  const identity = getIdentity();
   const brainDir = resolveBrainDir();
+  const brainRef = identity.demoMode ? "synthetic brain" : "brain";
+  const orgPossessive = identity.orgName ? `${identity.orgName}'s ` : "";
   const lines = [
-    `Nora Bellier, Brumeline's chief of staff, just created a new task in Boucle and wants you to research it and write its description.`,
+    `${ownerIntro(identity)} just created a new task in Boucle and wants you to research it and write its description.`,
     "",
     "Task:",
     `- ticketId: ${t.ticketId}  (use this for ticket_get / ticket_set)`,
@@ -579,7 +610,7 @@ function buildDescribePrompt(t: Ticket): string {
     `- project: ${t.project ?? "— (figure out the right gbrain project slug if you can)"}`,
     "",
     "Do this:",
-    `1. Use the provided Boucle tools and Brumeline's synthetic project pages under ${brainDir} to understand what this EPIC really is: ` +
+    `1. Use the provided Boucle tools and ${orgPossessive}${brainRef} project pages under ${brainDir} to understand what this EPIC really is: ` +
       "the goal, who's involved, current state, blockers, the right project, and a concrete next action.",
     "2. Call ticket_get(ticketId) for the latest, then ticket_set(ticketId, …) to fill in a clear `body` " +
       "(the description), `nextAction`, `project` (gbrain slug), and a `bucket` " +
@@ -587,7 +618,7 @@ function buildDescribePrompt(t: Ticket): string {
     "3. Feed durable findings back into the relevant gbrain notes and reindex the brain.",
     "4. Stay idempotent: update THIS ticketId, never create a second ticket. Do not message anyone.",
     "",
-    SPAWNED_CHAT_GUARDRAILS,
+    spawnedChatGuardrails(identity),
   ];
   return lines.join("\n");
 }

@@ -18,12 +18,15 @@ import type {
 } from "./store.ts";
 import { executeBoucleTool } from "./boucle-tools.ts";
 import { spawnMistralChat } from "./mistral.ts";
+import { getIdentity, type Identity } from "./identity.ts";
 
 const SOURCES = ["slack", "gmail", "gcal", "manual"] as const;
 const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
 const KINDS = ["task", "idea", "conv", "scope"] as const;
-const KIND_DESC =
-  "What the item IS: task = actionable; idea = something Nora Bellier wants to remember (not yet actionable); conv = pointer to an agent conversation; scope = a larger design to break down. Default task.";
+function kindDesc(identity: Identity): string {
+  const owner = identity.ownerName || "the owner";
+  return `What the item IS: task = actionable; idea = something ${owner} wants to remember (not yet actionable); conv = pointer to an agent conversation; scope = a larger design to break down. Default task.`;
+}
 const BUCKETS = ["urgent", "to_do_next", "cool_to_do", "maybe_one_day"] as const;
 const NEEDS = ["claude", "codex", "human", "none"] as const;
 const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
@@ -60,6 +63,8 @@ mcp_servers = [{ name = "boucle", transport = "streamable-http", url = "${opts.u
 }
 
 export function createBoucleMcpServer(store: BoucleStore): McpServer {
+  const identity = getIdentity();
+  const owner = identity.ownerName || "the owner";
   const server = new McpServer({ name: "boucle", version: "0.1.0" });
 
   server.registerTool(
@@ -113,7 +118,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         source: z.enum(SOURCES),
         body: z.string().optional(),
         priority: z.enum(PRIORITIES).optional(),
-        kind: z.enum(KINDS).optional().describe(KIND_DESC),
+        kind: z.enum(KINDS).optional().describe(kindDesc(identity)),
         bucket: z
           .enum(BUCKETS)
           .nullable()
@@ -123,7 +128,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         sourceRef: z.string().nullable().optional(),
         permalink: z.string().nullable().optional(),
         requester: z.string().nullable().optional().describe("person slug who asked, e.g. first-last."),
-        needs: z.enum(NEEDS).optional().describe("claude/codex for agent work, human for Nora-only, none for trivial."),
+        needs: z.enum(NEEDS).optional().describe(`claude/codex for agent work, human for ${owner} only, none for trivial.`),
         effort: z.enum(EFFORTS).nullable().optional(),
         dueAt: z.string().nullable().optional().describe("ISO 8601."),
         nextAction: z.string().nullable().optional().describe("The single concrete next step."),
@@ -190,7 +195,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         title: z.string().optional(),
         body: z.string().optional(),
         priority: z.enum(PRIORITIES).optional(),
-        kind: z.enum(KINDS).optional().describe(KIND_DESC),
+        kind: z.enum(KINDS).optional().describe(kindDesc(identity)),
         bucket: z.enum(BUCKETS).nullable().optional().describe("Triage bucket for the EPIC (how pressing)."),
         project: z.string().nullable().optional(),
         needs: z.enum(NEEDS).optional(),
@@ -213,7 +218,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
         ticketId: z.string(),
         toStatus: z.enum(STATUSES),
         snoozedUntil: z.string().nullable().optional().describe("ISO 8601; only for --to snoozed."),
-        reason: z.string().nullable().optional().describe("One line on why, e.g. \"Nora replied in-thread; the draft was approved\". Recorded on the timeline."),
+        reason: z.string().nullable().optional().describe(`One line on why, e.g. "${owner} replied in-thread; the draft was approved". Recorded on the timeline.`),
         workRef: z
           .string()
           .nullable()
