@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="ember" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffd800"/>
+      <stop offset="50%" stop-color="#ff8205"/>
+      <stop offset="100%" stop-color="#fa500f"/>
+    </linearGradient>
+    <mask id="hole">
+      <rect x="0" y="0" width="100" height="100" fill="#fff"/>
+      <circle cx="34" cy="50" r="5" fill="#000"/>
+    </mask>
+  </defs>
+  <rect x="18" y="32" width="64" height="36" rx="8" fill="#f1efe9" stroke="#191817" stroke-width="2" mask="url(#hole)"/>
+  <line x1="34" y1="32" x2="34" y2="68" stroke="#191817" stroke-width="1.5" stroke-dasharray="3 4"/>
+  <circle cx="34" cy="50" r="12" fill="none" stroke="url(#ember)" stroke-width="5"/>
+</svg>
