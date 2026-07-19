@@ -13,6 +13,7 @@ import {
   SunIcon,
   UserIcon,
 } from "lucide-react";
+import { useId } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import { useTheme } from "./hooks.ts";
@@ -29,12 +30,30 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-/** Boucle's neutral loop-glyph mark (currentColor, no gradient). Inline SVG so it themes with `color`. */
-export function Mark({ className }: { className?: string }) {
+/**
+ * Boucle's infinity-loop mark (docs/brand/logo-concepts/02-infinity-loop.svg).
+ * Ember gradient by default; `mono` renders currentColor for quiet contexts.
+ */
+export function Mark({ className, mono = false }: { className?: string; mono?: boolean }) {
+  const gradientId = useId();
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 3v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox="0 0 100 100" fill="none" className={className} aria-hidden="true">
+      {!mono && (
+        <defs>
+          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffd800" />
+            <stop offset="50%" stopColor="#ff8205" />
+            <stop offset="100%" stopColor="#fa500f" />
+          </linearGradient>
+        </defs>
+      )}
+      <path
+        d="M 50,50 C 50,32 30,32 22,50 C 30,68 50,68 50,50 C 50,32 70,32 78,50 C 70,68 50,68 50,50 Z"
+        stroke={mono ? "currentColor" : `url(#${gradientId})`}
+        strokeWidth="9"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
