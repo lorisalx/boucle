@@ -7,7 +7,7 @@ const IDENTITY_FALLBACK: Settings = {
   ownerName: "",
   orgName: "",
   demoMode: false,
-  providerName: "mistral",
+  providerName: "",
   providerConfigured: false,
 };
 

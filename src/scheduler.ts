@@ -3,11 +3,20 @@
  */
 import { BOUCLE_PORT } from "./config.ts";
 import { getMcpToken } from "./mcp.ts";
+import { getAgentRunner, type AgentRunner } from "./runner.ts";
 import type { BoucleStore, Loop, LoopRun, LoopRunTrigger } from "./store.ts";
-import { execVibe, type VibeExecResult, type VibeExecSpec } from "./vibe.ts";
+import type { VibeExecResult, VibeExecSpec } from "./vibe.ts";
 
 const TICK_MS = 30_000;
 const MAX_SUMMARY_CHARS = 8_000;
+
+function budgetThreshold(name: string, fallback: number): number {
+  const value = Number.parseFloat(process.env[name] ?? "");
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
+const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
 
 /** Whether `nowMs` falls inside the loop's active day/hour window (in its timezone). */
 export function isWithinWindow(loop: Loop, nowMs: number): boolean {
@@ -49,10 +58,12 @@ export class LoopScheduler {
 
   private readonly store: BoucleStore;
   private readonly dbPath: string;
+  private readonly runner: AgentRunner;
 
-  constructor(store: BoucleStore, dbPath: string) {
+  constructor(store: BoucleStore, dbPath: string, runner: AgentRunner = getAgentRunner()) {
     this.store = store;
     this.dbPath = dbPath;
+    this.runner = runner;
   }
 
   start(): void {
@@ -221,7 +232,7 @@ export class LoopScheduler {
           res.costUsd,
           res.sessionId,
         );
-        const updatedBudget = this.store.getLoopCostSummary();
+        const updatedBudget = this.getBudgetSummary();
         if (updatedBudget.warning && updatedBudget.warning !== this.lastBudgetWarning) {
           console.warn(updatedBudget.warning);
           this.lastBudgetWarning = updatedBudget.warning;
@@ -253,7 +264,7 @@ export class LoopScheduler {
   }
 
   private execVibe(spec: VibeExecSpec): Promise<VibeExecResult> {
-    return execVibe(spec, {
+    return this.runner.exec(spec, {
       dbPath: this.dbPath,
       mcpToken: getMcpToken(this.store),
       mcpUrl: `http://127.0.0.1:${BOUCLE_PORT}/mcp`,
@@ -261,15 +272,19 @@ export class LoopScheduler {
     });
   }
 
-  /** Apply the cumulative hard stop to every Vibe entry point. */
+  getBudgetSummary() {
+    return this.store.getLoopCostSummary(BUDGET_WARN, BUDGET_STOP);
+  }
+
+  /** Apply the cumulative hard stop to every agent entry point. */
   assertVibeBudget(): void {
-    const budget = this.store.getLoopCostSummary();
+    const budget = this.getBudgetSummary();
     if (budget.warning && budget.warning !== this.lastBudgetWarning) {
       console.warn(budget.warning);
       this.lastBudgetWarning = budget.warning;
     }
     if (budget.blocked) {
-      throw new Error(budget.warning ?? "Vibe budget exhausted; refusing to start a new invocation.");
+      throw new Error(budget.warning ?? "Agent budget exhausted; refusing to start a new invocation.");
     }
   }
 
@@ -292,7 +307,7 @@ export class LoopScheduler {
           res.costUsd,
           res.sessionId,
         );
-        const updatedBudget = this.store.getLoopCostSummary();
+        const updatedBudget = this.getBudgetSummary();
         if (updatedBudget.warning && updatedBudget.warning !== this.lastBudgetWarning) {
           console.warn(updatedBudget.warning);
           this.lastBudgetWarning = updatedBudget.warning;

@@ -8,7 +8,7 @@ import type { BoucleStore } from "./store.ts";
 /**
  * GraphRAG over the brain: an entity graph (projects, tickets, meetings,
  * people) built from the same sources the hybrid search indexes. Retrieval
- * seeds come from hybrid search (FTS + mistral-embed, RRF); the graph then
+ * seeds come from hybrid search (FTS + provider embeddings, RRF); the graph then
  * expands each seed 1–2 hops so answers draw on the connected neighborhood
  * (a ticket pulls in its project page, the meeting that spawned it, and the
  * people on the hook) instead of isolated chunks. Every expanded node keeps

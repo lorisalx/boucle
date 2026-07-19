@@ -8,12 +8,11 @@
  *   boucle source-seen <dedupeKey>
  *   boucle reprioritize
  *
- * DB: --db <path> | $BOUCLE_DB | ~/.boucle/boucle.db
+ * DB: --db <path> | $BOUCLE_DB | the shared Boucle data-directory default
  */
-import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
+
+import { resolveDbPath } from "./config.ts";
 
 import {
   BoucleStore,
@@ -53,13 +52,6 @@ const { values, positionals } = parseArgs({
   },
 });
 
-function resolveDbPath(): string {
-  const explicit = (values.db as string | undefined) ?? process.env.BOUCLE_DB;
-  const path = explicit && explicit.trim() ? explicit.trim() : join(homedir(), ".boucle", "boucle.db");
-  mkdirSync(dirname(path), { recursive: true });
-  return path;
-}
-
 function fail(message: string): never {
   process.stderr.write(`boucle: ${message}\n`);
   process.exit(1);
@@ -80,7 +72,7 @@ function ticketList(tickets: Ticket[]): string {
 }
 
 const json = values.json as boolean;
-const dbPath = resolveDbPath();
+const dbPath = resolveDbPath(values.db as string | undefined);
 const store = new BoucleStore(dbPath);
 const [group, action] = positionals;
 
@@ -169,7 +161,7 @@ if (group === "ticket" && action === "upsert") {
     url,
     token: getMcpToken(store),
     cliPath: fileURLToPath(import.meta.url),
-    dbPath: resolveDbPath(),
+    dbPath,
   }));
 } else {
   fail(

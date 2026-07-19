@@ -17,7 +17,7 @@ import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { api, type Ticket, type TicketEvent, type TicketPriority } from "./api.ts";
 import { navigate, useIdentity } from "./hooks.ts";
-import { isMistralConversationId, useActions } from "./Home.tsx";
+import { isConversationId, useActions } from "./Home.tsx";
 import {
   Button,
   KindIcon,
@@ -215,7 +215,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
             {ticket.workRef ? <LinkedWork workRef={ticket.workRef} /> : null}
 
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-              {isMistralConversationId(ticket.threadId) ? (
+              {isConversationId(ticket.threadId) ? (
                 <Button variant="outline" onClick={() => actions.openChat(ticket.threadId)}>
                   <MessageSquareIcon className="size-3.5" /> Open chat
                 </Button>

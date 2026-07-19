@@ -4,7 +4,8 @@ import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { resolveBrainDir, resolveMeetingsDir } from "./config.ts";
-import { embedTexts } from "./mistral.ts";
+import { getEmbeddingModel, getLegacyEmbeddingModel, getProvider } from "./providers/index.ts";
+import type { Provider } from "./providers/types.ts";
 import type { BoucleStore, SearchIndexer } from "./store.ts";
 
 export type SearchSource = "ticket" | "event" | "meeting" | "brain";
@@ -129,6 +130,8 @@ function probeFts5(): boolean {
 export class BrainSearch implements SearchIndexer {
   private readonly db: DatabaseSync;
   private readonly store: BoucleStore;
+  private readonly provider: Provider;
+  private readonly embeddingModel: string | null;
   private readonly ftsAvailable: boolean;
   private readonly watchers: FSWatcher[] = [];
   private fileTimer: ReturnType<typeof setTimeout> | null = null;
@@ -140,6 +143,8 @@ export class BrainSearch implements SearchIndexer {
   constructor(dbPath: string, store: BoucleStore) {
     this.db = new DatabaseSync(dbPath);
     this.store = store;
+    this.provider = getProvider();
+    this.embeddingModel = getEmbeddingModel();
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
     this.ftsAvailable = probeFts5();
     if (!this.ftsAvailable && !loggedFtsFallback) {
@@ -159,10 +164,15 @@ export class BrainSearch implements SearchIndexer {
       );
       CREATE TABLE IF NOT EXISTS search_embeddings (
         source TEXT NOT NULL, doc_id TEXT NOT NULL, chunk_id TEXT NOT NULL,
-        content_hash TEXT NOT NULL, embedding BLOB NOT NULL,
+        content_hash TEXT NOT NULL, model TEXT NOT NULL, embedding BLOB NOT NULL,
         PRIMARY KEY (source, doc_id, chunk_id, content_hash)
       );
     `);
+    const embeddingCols = this.db.prepare(`PRAGMA table_info(search_embeddings)`).all() as Array<{ name: string }>;
+    if (!embeddingCols.some((column) => column.name === "model")) {
+      this.db.exec(`ALTER TABLE search_embeddings ADD COLUMN model TEXT`);
+      this.db.prepare(`UPDATE search_embeddings SET model = ? WHERE model IS NULL`).run(getLegacyEmbeddingModel());
+    }
     if (this.ftsAvailable) {
       this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
         source UNINDEXED, doc_id UNINDEXED, chunk_id UNINDEXED, title, content,
@@ -289,7 +299,7 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private scheduleEmbedding(): void {
-    if (this.bootstrapping || this.embeddingDisabled || !(process.env.MISTRAL_API_KEY ?? "").trim()) return;
+    if (this.bootstrapping || this.embeddingDisabled || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return;
     if (this.embeddingTimer) clearTimeout(this.embeddingTimer);
     this.embeddingTimer = setTimeout(() => {
       this.embeddingTimer = null;
@@ -312,23 +322,24 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private async embedMissingOnce(): Promise<void> {
-    if (this.embeddingDisabled || !(process.env.MISTRAL_API_KEY ?? "").trim()) return;
+    if (this.embeddingDisabled || !this.embeddingModel || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return;
     const rows = this.db
       .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
           d.project_id AS projectId,d.url,d.content_hash AS contentHash
         FROM search_documents d LEFT JOIN search_embeddings e
-          ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id AND e.content_hash=d.content_hash
+          ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id
+            AND e.content_hash=d.content_hash AND e.model=?
         WHERE d.source != 'event' AND e.embedding IS NULL ORDER BY d.source,d.doc_id,d.chunk_id`)
-      .all() as unknown as SearchDocument[];
+      .all(this.embeddingModel) as unknown as SearchDocument[];
     try {
       for (let offset = 0; offset < rows.length; offset += EMBED_BATCH_SIZE) {
         const batch = rows.slice(offset, offset + EMBED_BATCH_SIZE);
-        const vectors = await embedTexts(batch.map((row) => `${row.title}\n${row.content}`));
-        if (vectors.length !== batch.length) throw new Error("Mistral embeddings response length mismatch");
+        const vectors = await this.provider.embed(batch.map((row) => `${row.title}\n${row.content}`));
+        if (vectors.length !== batch.length) throw new Error(`${this.provider.name} embeddings response length mismatch`);
         batch.forEach((row, index) => {
           this.db
-            .prepare("INSERT OR REPLACE INTO search_embeddings (source,doc_id,chunk_id,content_hash,embedding) VALUES (?,?,?,?,?)")
-            .run(row.source, row.docId, row.chunkId, row.contentHash, vectorBlob(vectors[index] ?? []));
+            .prepare("INSERT OR REPLACE INTO search_embeddings (source,doc_id,chunk_id,content_hash,model,embedding) VALUES (?,?,?,?,?,?)")
+            .run(row.source, row.docId, row.chunkId, row.contentHash, this.embeddingModel, vectorBlob(vectors[index] ?? []));
         });
       }
     } catch {
@@ -408,16 +419,17 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private async vectorSearch(query: string): Promise<RankedDocument[]> {
-    if (this.embeddingDisabled || !(process.env.MISTRAL_API_KEY ?? "").trim()) return [];
+    if (this.embeddingDisabled || !this.embeddingModel || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return [];
     try {
-      const [queryVector] = await embedTexts([query]);
+      const [queryVector] = await this.provider.embed([query]);
       if (!queryVector) return [];
       const rows = this.db
         .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
             d.project_id AS projectId,d.url,d.content_hash AS contentHash,e.embedding
           FROM search_documents d JOIN search_embeddings e
-            ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id AND e.content_hash=d.content_hash`)
-        .all() as unknown as StoredEmbedding[];
+            ON e.source=d.source AND e.doc_id=d.doc_id AND e.chunk_id=d.chunk_id
+              AND e.content_hash=d.content_hash AND e.model=?`)
+        .all(this.embeddingModel) as unknown as StoredEmbedding[];
       return rows
         .map((row) => ({ ...row, snippet: firstMatchingLine(row.content, query), similarity: cosine(queryVector, blobVector(row.embedding)) }))
         .sort((a, b) => b.similarity - a.similarity)

@@ -33,7 +33,7 @@ import {
 } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
 import { navigate, useHashRoute, useIdentity, useProjects } from "./hooks.ts";
-import { isMistralConversationId, useActions } from "./Home.tsx";
+import { isConversationId, useActions } from "./Home.tsx";
 import { BrainMarkdown, renderInline, type WikiLinkProps } from "./Markdown.tsx";
 import {
   Button,
@@ -245,7 +245,7 @@ function TicketTask({ ticket, actions }: { ticket: Ticket; actions: ReturnType<t
         </div>
       </div>
       <div className="mt-2 flex items-center justify-end gap-1 border-t border-border pt-2">
-        {isMistralConversationId(ticket.threadId) ? (
+        {isConversationId(ticket.threadId) ? (
           <Button title="Open chat" onClick={() => actions.openChat(ticket.threadId)}>
             <MessageSquareIcon className="size-3.5" /> chat
           </Button>

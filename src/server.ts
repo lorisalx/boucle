@@ -13,7 +13,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
-import { BOUCLE_PORT, spawnedChatGuardrails, isMistralConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { getIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
@@ -30,14 +30,13 @@ import {
 import { LoopScheduler } from "./scheduler.ts";
 import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
 import {
-  appendMistralBrainMessage,
-  appendMistralMessage,
-  getMistralTranscript,
-  spawnMistralChat,
-  spawnMistralProjectChat,
-  startMistralBrainChat,
-  transcribe,
-} from "./mistral.ts";
+  appendBrainMessage,
+  appendMessage,
+  getTranscript,
+  spawnChat,
+  spawnProjectChat,
+  startBrainChat,
+} from "./chat.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -52,14 +51,27 @@ import {
 import { listMeetings, type Meeting } from "./meetings.ts";
 import { initBrainGraph, graphSearch } from "./graph.ts";
 import { BrainSearch } from "./search.ts";
-import { readVibeTranscript, VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
+import { VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
+import { getProvider } from "./providers/index.ts";
+import type { Provider } from "./providers/types.ts";
+import { getAgentRunner, type AgentRunner } from "./runner.ts";
+
+let provider: Provider;
+let runner: AgentRunner;
+try {
+  provider = getProvider();
+  runner = getAgentRunner();
+} catch (error) {
+  process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
 
 const dbPath = resolveDbPath();
 const store = new BoucleStore(dbPath);
 const search = new BrainSearch(dbPath, store);
 initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
-const scheduler = new LoopScheduler(store, dbPath);
+const scheduler = new LoopScheduler(store, dbPath, runner);
 const app = new Hono();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
@@ -132,16 +144,16 @@ app.post("/api/projects/:id/timeline", async (c) => {
   return c.json({ timeline });
 });
 
-// "Brief me" — spawn a read-only Mistral chat with synthetic project + ticket context
+// "Brief me" — spawn a read-only provider chat with project + ticket context
 // for one project and reports where it stands.
 app.post("/api/projects/:id/brief", async (c) => {
   const id = c.req.param("id");
   if (!isValidProjectId(id)) return c.json({ error: "invalid project id" }, 400);
-  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  if (!isProviderConfigured()) return c.json({ error: `${provider.name.toUpperCase()}_API_KEY is not configured.` }, 400);
   const project = listProjects(store.listOpen(), store.listProjectMeta()).find((p) => p.projectId === id);
   if (!project) return c.json({ error: "project not found" }, 404);
   try {
-    const result = await spawnMistralProjectChat(store, `Brief: ${project.title}`, buildBriefPrompt(project));
+    const result = await spawnProjectChat(store, `Brief: ${project.title}`, buildBriefPrompt(project));
     return c.json(result);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
@@ -257,7 +269,7 @@ app.post("/api/loop-state", async (c) => {
 const withRunState = (loop: ReturnType<typeof store.getLoop>, includeBudget = true) => {
   if (!loop) return loop;
   if (!includeBudget) return { ...loop, isRunning: scheduler.isRunning(loop.loopId) };
-  const budget = store.getLoopCostSummary();
+  const budget = scheduler.getBudgetSummary();
   return {
     ...loop,
     isRunning: scheduler.isRunning(loop.loopId),
@@ -320,7 +332,7 @@ app.get("/api/vibe/:scope/:sessionId", async (c) => {
   const scope = c.req.param("scope");
   const sessionId = c.req.param("sessionId");
   if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid Vibe scope or session id" }, 400);
-  const transcript = await readVibeTranscript(process.cwd(), scope, sessionId);
+  const transcript = await runner.readTranscript(process.cwd(), scope, sessionId);
   if (!transcript) return c.json({ error: "Vibe session not found" }, 404);
   return c.json({ ...transcript, running: scheduler.isVibeRunning(scope) });
 });
@@ -334,7 +346,7 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { message?: string };
   const message = (body.message ?? "").trim();
   if (!message) return c.json({ error: "message required" }, 400);
-  if (!(await readVibeTranscript(process.cwd(), scope, sessionId))) {
+  if (!(await runner.readTranscript(process.cwd(), scope, sessionId))) {
     return c.json({ error: "Vibe session not found" }, 404);
   }
   try {
@@ -353,25 +365,24 @@ app.get("/api/settings", (c) => {
     ownerName: identity.ownerName,
     orgName: identity.orgName,
     demoMode: identity.demoMode,
-    // providerName/providerConfigured are wired to the real provider abstraction in workstream 2.
-    providerName: "mistral",
-    providerConfigured: isMistralConfigured(),
+    providerName: provider.name,
+    providerConfigured: provider.isConfigured(),
   });
 });
 
 app.post("/api/tickets/:id/spawn-chat", async (c) => {
   const ticket = store.getById(c.req.param("id"));
   if (!ticket) return c.json({ error: "ticket not found" }, 404);
-  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  if (!isProviderConfigured()) return c.json({ error: `${provider.name.toUpperCase()}_API_KEY is not configured.` }, 400);
   try {
-    const result = await spawnMistralChat(store, ticket);
+    const result = await spawnChat(store, ticket);
     return c.json(result);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
 });
 
-// Manually create an item. For tasks/scopes we normally kick off a Mistral chat that
+// Manually create an item. For tasks/scopes we normally kick off a provider chat that
 // researches and writes the description; quick-capture passes chat:false for an
 // instant, silent create (ideas especially).
 app.post("/api/epics", async (c) => {
@@ -410,11 +421,11 @@ app.post("/api/epics", async (c) => {
       );
     }
   }
-  if (!wantsChat || !isMistralConfigured()) {
+  if (!wantsChat || !isProviderConfigured()) {
     return c.json({ ticket, openUrl: null, chat: false });
   }
   try {
-    const result = await spawnMistralChat(store, ticket, buildDescribePrompt(ticket));
+    const result = await spawnChat(store, ticket, buildDescribePrompt(ticket));
     const updated = store.getById(ticket.ticketId)!;
     return c.json({ ticket: updated, openUrl: result.openUrl, chat: true });
   } catch (error) {
@@ -475,7 +486,8 @@ app.post("/api/capture/smart", async (c) => {
 });
 
 app.post("/api/capture/voice", async (c) => {
-  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  if (!isProviderConfigured()) return c.json({ error: `${provider.name.toUpperCase()}_API_KEY is not configured.` }, 400);
+  if (!provider.supportsTranscription()) return c.json({ error: `${provider.name} transcription is not supported.` }, 400);
   try {
     scheduler.assertVibeBudget();
   } catch (error) {
@@ -492,7 +504,7 @@ app.post("/api/capture/voice", async (c) => {
   const projectValue = form.get("project");
   const project = typeof projectValue === "string" && projectValue.trim() ? projectValue.trim() : null;
   try {
-    const transcript = await transcribe(file, file.name || "capture.webm");
+    const transcript = await provider.transcribe(file, file.name || "capture.webm");
     return c.json({ ...startSmartCapture(transcript, project), transcript }, 202);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
@@ -626,7 +638,7 @@ function buildDescribePrompt(t: Ticket): string {
 app.get("/api/chats/:conversationId", async (c) => {
   const conversationId = c.req.param("conversationId");
   try {
-    const transcript = await getMistralTranscript(conversationId);
+    const transcript = await getTranscript(store, conversationId);
     return c.json({ ...transcript, ticket: store.getByThreadId(conversationId) });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
@@ -634,15 +646,15 @@ app.get("/api/chats/:conversationId", async (c) => {
 });
 
 app.post("/api/brain-chat", async (c) => {
-  if (!isMistralConfigured()) return c.json({ error: "MISTRAL_API_KEY is not configured." }, 400);
+  if (!isProviderConfigured()) return c.json({ error: `${provider.name.toUpperCase()}_API_KEY is not configured.` }, 400);
   const body = (await c.req.json().catch(() => ({}))) as { text?: string; conversationId?: string };
   const text = (body.text ?? "").trim();
   const existingId = (body.conversationId ?? "").trim();
   if (!text) return c.json({ error: "text required" }, 400);
   try {
-    const conversationId = existingId || (await startMistralBrainChat(store, text));
-    if (existingId) await appendMistralBrainMessage(store, conversationId, text);
-    return c.json(await getMistralTranscript(conversationId));
+    const conversationId = existingId || (await startBrainChat(store, text));
+    if (existingId) await appendBrainMessage(store, conversationId, text);
+    return c.json(await getTranscript(store, conversationId));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
@@ -650,7 +662,7 @@ app.post("/api/brain-chat", async (c) => {
 
 app.get("/api/brain-chat/:conversationId", async (c) => {
   try {
-    return c.json(await getMistralTranscript(c.req.param("conversationId")));
+    return c.json(await getTranscript(store, c.req.param("conversationId")));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
@@ -662,8 +674,8 @@ app.post("/api/chats/:conversationId/messages", async (c) => {
   const text = (body.text ?? "").trim();
   if (text.length === 0) return c.json({ error: "text required" }, 400);
   try {
-    await appendMistralMessage(store, conversationId, text);
-    const transcript = await getMistralTranscript(conversationId);
+    await appendMessage(store, conversationId, text);
+    const transcript = await getTranscript(store, conversationId);
     return c.json({ ...transcript, ticket: store.getByThreadId(conversationId) });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);

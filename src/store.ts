@@ -152,6 +152,26 @@ export interface SearchIndexer {
   search(query: string, limit?: number): Promise<unknown>;
 }
 
+export type ConversationKind = "chat" | "brain";
+
+export interface ConversationRecord {
+  conversationId: string;
+  kind: ConversationKind;
+  title: string;
+  provider: string;
+  model: string;
+  instructions: string;
+  createdAt: string;
+}
+
+export interface CreateConversationInput {
+  kind: ConversationKind;
+  title: string;
+  provider: string;
+  model: string;
+  instructions: string;
+}
+
 /** Initial bucket for a fresh/back-filled EPIC, derived from its priority. */
 export function bucketFromPriority(priority: TicketPriority): TicketBucket {
   switch (priority) {
@@ -907,6 +927,17 @@ export class BoucleStore {
       CREATE TABLE IF NOT EXISTS project_meta (
         project_id TEXT PRIMARY KEY, status_override TEXT, sort_order REAL, updated_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS conversations (
+        conversation_id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('chat', 'brain')),
+        title TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+        instructions TEXT NOT NULL, created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS conversation_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL,
+        message_json TEXT NOT NULL, created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation
+        ON conversation_messages(conversation_id, id);
     `);
     this.migrate();
     this.closeAbandonedRuns();
@@ -963,6 +994,33 @@ export class BoucleStore {
       SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
       WHERE thread_id IS NOT NULL AND COALESCE(thread_project, '') != 'vibe';
     `);
+  }
+
+  createConversation(input: CreateConversationInput): ConversationRecord {
+    const conversationId = `local-${randomUUID()}`;
+    const createdAt = new Date().toISOString();
+    this.db.prepare(`INSERT INTO conversations
+      (conversation_id,kind,title,provider,model,instructions,created_at) VALUES (?,?,?,?,?,?,?)`)
+      .run(conversationId, input.kind, input.title, input.provider, input.model, input.instructions, createdAt);
+    return { conversationId, createdAt, ...input };
+  }
+
+  getConversation(conversationId: string): ConversationRecord | null {
+    return (this.db.prepare(`SELECT conversation_id AS conversationId,kind,title,provider,model,instructions,
+      created_at AS createdAt FROM conversations WHERE conversation_id = ?`).get(conversationId) as
+      | ConversationRecord
+      | undefined) ?? null;
+  }
+
+  appendConversationMessage(conversationId: string, message: unknown): void {
+    this.db.prepare(`INSERT INTO conversation_messages (conversation_id,message_json,created_at) VALUES (?,?,?)`)
+      .run(conversationId, JSON.stringify(message), new Date().toISOString());
+  }
+
+  listConversationMessages(conversationId: string): unknown[] {
+    const rows = this.db.prepare(`SELECT message_json AS messageJson FROM conversation_messages
+      WHERE conversation_id = ? ORDER BY id`).all(conversationId) as Array<{ messageJson: string }>;
+    return rows.map((row) => JSON.parse(row.messageJson) as unknown);
   }
 
   /** Insert the default loops, so a fresh install has working loops. Idempotent per loop name. */
@@ -1530,7 +1588,7 @@ export class BoucleStore {
     return rows;
   }
 
-  getLoopCostSummary(): LoopCostSummary {
+  getLoopCostSummary(warnThreshold = 10, stopThreshold = 30): LoopCostSummary {
     // Vibe reports per-invocation cost, so loop, capture, and enrich rows are totaled here.
     // Conversations API responses do not expose billed cost; estimating browser chat,
     // describe, or brief spend would invent numbers, so those calls are excluded.
@@ -1538,12 +1596,12 @@ export class BoucleStore {
     const totalCostUsd = row.total;
     return {
       totalCostUsd,
-      warning: totalCostUsd >= 10
-        ? totalCostUsd >= 30
-          ? `Vibe budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $30.00).`
-          : `Vibe spend has crossed the $10 warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
-        : null,
-      blocked: totalCostUsd >= 30,
+      warning: totalCostUsd >= stopThreshold
+        ? `Agent budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $${stopThreshold.toFixed(2)}).`
+        : totalCostUsd >= warnThreshold
+          ? `Agent spend has crossed the $${warnThreshold.toFixed(2)} warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
+          : null,
+      blocked: totalCostUsd >= stopThreshold,
     };
   }
 

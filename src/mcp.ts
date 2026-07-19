@@ -1,5 +1,5 @@
 /**
- * boucle MCP — exposes the ticket store (and the Mistral chat handoff) as tools.
+ * boucle MCP — exposes the ticket store and provider chat handoff as tools.
  *
  * One registry, served two ways: over HTTP at /mcp (see server.ts) and over stdio
  * (`boucle mcp`, see cli.ts). Loops point Codex/Claude at these tools so a run can
@@ -17,7 +17,7 @@ import type {
   UpsertTicketInput,
 } from "./store.ts";
 import { executeBoucleTool } from "./boucle-tools.ts";
-import { spawnMistralChat } from "./mistral.ts";
+import { spawnChat } from "./chat.ts";
 import { getIdentity, type Identity } from "./identity.ts";
 
 const SOURCES = ["slack", "gmail", "gcal", "manual"] as const;
@@ -137,7 +137,7 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
           .nullable()
           .optional()
           .describe(
-            "Mistral conversation ID. Set automatically by spawn_chat — do NOT set this manually and never put a Slack channel/thread id here.",
+            "Provider conversation ID. Set automatically by spawn_chat — do NOT set this manually and never put a Slack channel/thread id here.",
           ),
       },
       annotations: { idempotentHint: true },
@@ -302,14 +302,14 @@ export function createBoucleMcpServer(store: BoucleStore): McpServer {
     {
       title: "Kick off an agent chat",
       description:
-        "Start a Mistral conversation for a ticket and link it back to the ticket. Requires MISTRAL_API_KEY. Use for tickets that need agent work (needs=claude/codex).",
+        "Start a provider conversation for a ticket and link it back to the ticket. Requires the configured provider key. Use for tickets that need agent work (needs=claude/codex).",
       inputSchema: { ticketId: z.string() },
     },
     async ({ ticketId }) => {
       const ticket = store.getById(ticketId);
       if (!ticket) return ok({ error: "ticket not found" });
       try {
-        const result = await spawnMistralChat(store, ticket);
+        const result = await spawnChat(store, ticket);
         return ok(result);
       } catch (error) {
         return ok({ error: error instanceof Error ? error.message : String(error) });

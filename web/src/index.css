@@ -4,7 +4,7 @@
 @custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 
 /*
- * Courant d'air — the Mistral Boucle design system.
+ * Courant d'air — the Boucle design system.
  * The Vibe look: warm paper ground, white cards one step brighter, sidebar one
  * step deeper. Grayscale is warm (stone, not slate); status reads as soft
  * tinted pills; the accent (#FA500F) appears in at most three places per

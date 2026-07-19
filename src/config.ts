@@ -2,6 +2,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { Identity } from "./identity.ts";
+import { getProvider } from "./providers/index.ts";
 
 // Boucle server config: env-driven paths and constants (port, DB, brain dir, guardrails).
 // Loaded from .env at the repo root when present, else from the process environment.
@@ -10,7 +11,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 try {
   process.loadEnvFile(join(REPO_ROOT, ".env"));
 } catch {
-  // no .env — MISTRAL_API_KEY must come from the environment
+  // no .env — configuration comes from the process environment
 }
 
 function defaultDbDir(): string {
@@ -61,7 +62,7 @@ Then, two hard rules for the rest of this conversation:
 - Production changes: do NOT deploy, restart, publish, migrate, alter production data, or run a data-writing job${prodScope} without ${approver}. Inspection and dry-runs are fine; state exactly what will change and where, then wait.`;
 }
 
-/** Presence only; the API key itself is never returned to the web UI or persisted in sqlite. */
-export function isMistralConfigured(): boolean {
-  return (process.env.MISTRAL_API_KEY ?? "").trim().length > 0;
+/** Provider configuration state; credentials are never returned to the web UI or persisted. */
+export function isProviderConfigured(): boolean {
+  return getProvider().isConfigured();
 }

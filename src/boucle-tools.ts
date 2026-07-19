@@ -1,15 +1,7 @@
 import { graphSearch } from "./graph.ts";
 import { getProjectPage } from "./projects.ts";
+import type { ToolSpec } from "./providers/types.ts";
 import type { BoucleStore, ListTicketsFilter, SetTicketFieldsInput, TicketStatus } from "./store.ts";
-
-export interface FunctionTool {
-  readonly type: "function";
-  readonly function: {
-    readonly name: string;
-    readonly description: string;
-    readonly parameters: Record<string, unknown>;
-  };
-}
 
 const enumValues = (values: readonly string[]) => ({ type: "string", enum: values });
 
@@ -20,8 +12,8 @@ const BUCKETS = ["urgent", "to_do_next", "cool_to_do", "maybe_one_day"] as const
 const NEEDS = ["claude", "codex", "human", "none"] as const;
 const EFFORTS = ["xs", "s", "m", "l", "xl"] as const;
 
-/** Store-backed tools safe to expose to a Mistral conversation. */
-export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
+/** Store-backed tools safe to expose to a provider conversation. */
+export const BOUCLE_TOOLS: readonly ToolSpec[] = [
   {
     type: "function",
     function: {
@@ -158,7 +150,7 @@ export const MISTRAL_BOUCLE_TOOLS: readonly FunctionTool[] = [
   },
 ];
 
-export const MISTRAL_BRAIN_TOOL_NAMES = new Set([
+export const BOUCLE_BRAIN_TOOL_NAMES = new Set([
   "brain_search",
   "brain_graph_search",
   "ticket_list",
@@ -168,8 +160,8 @@ export const MISTRAL_BRAIN_TOOL_NAMES = new Set([
 ]);
 
 /** Strictly read-only tool declarations for the global brain conversation. */
-export const MISTRAL_BRAIN_TOOLS: readonly FunctionTool[] = MISTRAL_BOUCLE_TOOLS.filter((tool) =>
-  MISTRAL_BRAIN_TOOL_NAMES.has(tool.function.name),
+export const BOUCLE_BRAIN_TOOLS: readonly ToolSpec[] = BOUCLE_TOOLS.filter((tool) =>
+  BOUCLE_BRAIN_TOOL_NAMES.has(tool.function.name),
 );
 
 type ToolArgs = Record<string, unknown>;
@@ -180,7 +172,7 @@ function requiredString(args: ToolArgs, key: string): string {
   return value;
 }
 
-/** The single implementation used by MCP registrations and the Mistral relay. */
+/** The single implementation used by MCP registrations and provider relays. */
 export async function executeBoucleTool(store: BoucleStore, name: string, args: ToolArgs): Promise<unknown> {
   switch (name) {
     case "brain_search":

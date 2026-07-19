@@ -6,14 +6,10 @@ import { Button, Status } from "./ui.tsx";
 
 export function Settings() {
   const identity = useIdentity();
-  const [providerConfigured, setProviderConfigured] = useState(false);
   const [mcp, setMcp] = useState<{ url: string; token: string; configToml: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    api.settings().then((s) => {
-      setProviderConfigured(s.providerConfigured);
-    });
     api.mcpInfo().then(setMcp).catch(() => {});
   }, []);
 
@@ -31,14 +27,13 @@ export function Settings() {
 
       <div className="flex flex-col gap-6">
         <div className="rounded-lg border border-border bg-surface px-4 py-3">
-          <h2 className="text-sm font-medium text-fg">Mistral</h2>
+          <h2 className="text-sm font-medium capitalize text-fg">{identity.providerName || "Provider"}</h2>
           <p className="mt-1 text-xs text-muted">
-            Spawned chats use the Conversations API. Set <code className="font-mono">MISTRAL_API_KEY</code> in
-            the server environment; {identity.appName} never exposes or stores the key.
+            Spawned chats use the configured provider. {identity.appName} never exposes or stores its API key.
           </p>
           <div className="mt-3">
-            <Status tone={providerConfigured ? "success" : "neutral"}>
-              API key {providerConfigured ? "present" : "not configured"}
+            <Status tone={identity.providerConfigured ? "success" : "neutral"}>
+              API key {identity.providerConfigured ? "present" : "not configured"}
             </Status>
           </div>
         </div>

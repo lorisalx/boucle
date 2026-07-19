@@ -43,7 +43,7 @@ export function Chat({ conversationId }: { conversationId: string }) {
           <ArrowLeftIcon className="size-4" /> Back
         </a>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-sm font-semibold text-fg">{chat?.ticket?.title ?? "Mistral chat"}</h1>
+          <h1 className="truncate text-sm font-semibold text-fg">{chat?.ticket?.title ?? "Chat"}</h1>
           <p className="truncate font-mono text-[10px] text-dim">{conversationId}</p>
         </div>
         {chat?.ticket ? (

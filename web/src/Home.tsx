@@ -45,12 +45,12 @@ import {
 } from "./ui.tsx";
 
 /**
- * Mistral conversation IDs are UUIDs. Gate the chat affordance so old foreign
- * values that may have landed in threadId do not become broken internal links.
+ * Local and legacy provider conversation IDs. Gate the chat affordance so old
+ * foreign values in threadId do not become broken internal links.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function isMistralConversationId(id?: string | null): id is string {
-  return typeof id === "string" && UUID_RE.test(id);
+export function isConversationId(id?: string | null): id is string {
+  return typeof id === "string" && UUID_RE.test(id.startsWith("local-") ? id.slice("local-".length) : id);
 }
 
 /** Rank items inside a project: by bucket (urgent first), untriaged last, then score. */
@@ -78,7 +78,7 @@ export function useActions(refresh: () => void) {
       setPriority: (id: string, priority: TicketPriority) => after(api.setFields(id, { priority })),
       setBucket: (id: string, bucket: TicketBucket) => after(api.setFields(id, { bucket })),
       openChat: (threadId?: string | null) => {
-        if (isMistralConversationId(threadId)) window.location.assign(`/chats/${threadId}`);
+        if (isConversationId(threadId)) window.location.assign(`/chats/${threadId}`);
       },
       startChat: (id: string) =>
         api
@@ -261,8 +261,8 @@ function ItemRow({ item, actions, dormant }: { item: Ticket; actions: Actions; d
           </Button>
         ) : (
           <>
-            {isMistralConversationId(item.threadId) ? (
-              <Button title="Open Mistral chat" onClick={() => actions.openChat(item.threadId)}>
+            {isConversationId(item.threadId) ? (
+              <Button title="Open chat" onClick={() => actions.openChat(item.threadId)}>
                 <MessageSquareIcon className="size-3.5 text-success" />
               </Button>
             ) : (
