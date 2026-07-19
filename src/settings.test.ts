@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseSettingsUpdate, resolveSettings } from "./settings.ts";
+import { parseSettingsUpdate, resolveSettings, settingsWithUpdate } from "./settings.ts";
 
 test("runner and t3code settings resolve from meta before environment and defaults", () => {
   const previous = {
@@ -35,5 +35,28 @@ test("runner and t3code settings resolve from meta before environment and defaul
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
     }
+  }
+});
+
+test("settings updates normalize selectors and allow clearing meta overrides", () => {
+  assert.deepEqual(parseSettingsUpdate({ provider: "Mistral", runner: "Codex", chatModel: null }), {
+    provider: "mistral",
+    runner: "codex",
+    chatModel: null,
+  });
+  assert.deepEqual(parseSettingsUpdate({ provider: null, runner: null }), { provider: null, runner: null });
+
+  const previous = process.env.BOUCLE_CHAT_MODEL;
+  process.env.BOUCLE_CHAT_MODEL = "env-chat-model";
+  try {
+    const settings = settingsWithUpdate({
+      getMeta(key) {
+        return key === "chatModel" ? "meta-chat-model" : null;
+      },
+    }, { chatModel: null }, false);
+    assert.deepEqual(settings.chatModel, { value: "env-chat-model", source: "env" });
+  } finally {
+    if (previous === undefined) delete process.env.BOUCLE_CHAT_MODEL;
+    else process.env.BOUCLE_CHAT_MODEL = previous;
   }
 });

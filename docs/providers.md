@@ -4,6 +4,8 @@ Boucle selects one provider at process start. Set `BOUCLE_PROVIDER=mistral` or `
 
 Settings saved in the web UI take precedence over environment variables. Environment variables take precedence over defaults. The Settings page shows the source for each field. Provider API keys remain environment-only.
 
+Changing the provider in Settings clears saved chat, embedding, and transcription model overrides unless the same update includes those fields. The newly selected provider therefore uses its environment values or defaults instead of inheriting model names from the previous provider.
+
 Provider conversations are stored locally in SQLite. Each new conversation records its provider and model. Boucle refuses to continue a local conversation when its recorded provider differs from the active provider. Legacy Mistral conversation IDs remain readable when `MISTRAL_API_KEY` is configured.
 
 ## Provider matrix

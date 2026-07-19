@@ -39,6 +39,7 @@ import {
   startBrainChat,
 } from "./chat.ts";
 import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
+import { inferCaptureKind } from "./capture-kind.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -295,8 +296,12 @@ app.get("/api/loops", (c) => c.json(store.listLoops().map((loop) => withRunState
 
 app.post("/api/loops", async (c) => {
   const body = (await c.req.json()) as CreateLoopInput;
-  // Keep the Phase 1 create response contract unchanged.
-  return c.json(withRunState(store.createLoop(body), false));
+  try {
+    // Keep the Phase 1 create response contract unchanged.
+    return c.json(withRunState(store.createLoop(body), false));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 });
 
 app.get("/api/loops/:id", (c) => {
@@ -307,7 +312,11 @@ app.get("/api/loops/:id", (c) => {
 
 app.post("/api/loops/:id", async (c) => {
   const body = (await c.req.json()) as Omit<UpdateLoopInput, "loopId">;
-  return c.json(withRunState(store.updateLoop({ ...body, loopId: c.req.param("id") })));
+  try {
+    return c.json(withRunState(store.updateLoop({ ...body, loopId: c.req.param("id") })));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
 });
 
 app.delete("/api/loops/:id", (c) => {
@@ -420,8 +429,16 @@ app.get("/api/settings", (c) => c.json(settingsResponse()));
 
 app.put("/api/settings", async (c) => {
   try {
+    const demoMode = getIdentity().demoMode;
+    const current = resolveSettings(store, demoMode);
     const update = parseSettingsUpdate(await c.req.json().catch(() => null));
-    const candidate = settingsWithUpdate(store, update, getIdentity().demoMode);
+    const requested = settingsWithUpdate(store, update, demoMode);
+    if (requested.provider.value !== current.provider.value) {
+      for (const key of ["chatModel", "embedModel", "transcribeModel"] as const) {
+        if (!Object.hasOwn(update, key)) update[key] = null;
+      }
+    }
+    const candidate = settingsWithUpdate(store, update, demoMode);
     validateResolvedSettings(candidate);
     store.setMetaValues(Object.entries(update));
     invalidateIdentity();
@@ -477,21 +494,22 @@ app.post("/api/epics", async (c) => {
     title: string;
     project?: string | null;
     bucket?: TicketBucket | null;
-    kind?: TicketKind;
+    kind?: TicketKind | "auto";
     chat?: boolean;
     /** No project picked but the user wants Boucle to find one (⌘K "Auto"). */
     autoRoute?: boolean;
   };
   const title = (body.title ?? "").trim();
   if (!title) return c.json({ error: "title required" }, 400);
-  const kind = body.kind ?? "task";
+  const project = body.project ?? null;
+  const kind = body.kind === "auto" ? await inferCaptureKind(provider, title, project) : body.kind ?? "task";
   const wantsChat = body.chat ?? (kind === "task" || kind === "scope");
   const ticket = store.upsert({
     dedupeKey: `manual:${randomUUID()}`,
     title,
     source: "manual",
     createdBy: "human",
-    project: body.project ?? null,
+    project,
     bucket: body.bucket ?? null,
     kind,
     needs: wantsChat ? "claude" : "none",

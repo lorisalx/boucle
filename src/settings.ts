@@ -56,7 +56,7 @@ export const CONFIGURABLE_SETTING_KEYS = [
 ] as const;
 
 export type ConfigurableSettingKey = (typeof CONFIGURABLE_SETTING_KEYS)[number];
-export type SettingsUpdate = Partial<Record<ConfigurableSettingKey, string>>;
+export type SettingsUpdate = Partial<Record<ConfigurableSettingKey, string | null>>;
 
 function stringSetting(store: SettingsStore | null, key: string, envName: string, fallback: string): ResolvedSetting<string> {
   const meta = store?.getMeta(key);
@@ -131,13 +131,19 @@ export function parseSettingsUpdate(value: unknown): SettingsUpdate {
   const update: SettingsUpdate = {};
   for (const [key, field] of Object.entries(value)) {
     if (!allowed.has(key)) throw new Error(`Unsupported setting: ${key}.`);
+    if (field === null) {
+      update[key as ConfigurableSettingKey] = null;
+      continue;
+    }
     if (typeof field !== "string") throw new Error(`${key} must be a string.`);
     update[key as ConfigurableSettingKey] = field.trim();
   }
-  if (update.provider !== undefined && update.provider !== "mistral" && update.provider !== "openai") {
+  if (typeof update.provider === "string") update.provider = update.provider.toLowerCase();
+  if (typeof update.runner === "string") update.runner = update.runner.toLowerCase();
+  if (update.provider !== undefined && update.provider !== null && update.provider !== "mistral" && update.provider !== "openai") {
     throw new Error("provider must be one of: mistral, openai.");
   }
-  if (update.runner !== undefined && update.runner !== "vibe" && update.runner !== "codex" && update.runner !== "claude") {
+  if (update.runner !== undefined && update.runner !== null && update.runner !== "vibe" && update.runner !== "codex" && update.runner !== "claude") {
     throw new Error("runner must be one of: vibe, codex, claude.");
   }
   return update;

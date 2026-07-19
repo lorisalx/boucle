@@ -39,3 +39,23 @@ test("t3code spawn dispatches a seeded thread in the configured project and retu
     globalThis.fetch = originalFetch;
   }
 });
+
+test("t3code spawn explains network failures with the configured URL", async () => {
+  const config = {
+    baseUrl: "http://127.0.0.1:9",
+    token: "secret-token",
+    defaultProject: "boucle",
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new TypeError("fetch failed");
+  };
+  try {
+    await assert.rejects(
+      spawnT3CodeChat(config, { title: "Tiny ticket", prompt: "Inspect this ticket." }),
+      /t3code unreachable at http:\/\/127\.0\.0\.1:9: check the URL and token/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

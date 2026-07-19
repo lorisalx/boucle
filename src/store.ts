@@ -1691,14 +1691,18 @@ export class BoucleStore {
       .run(key, value);
   }
 
-  setMetaValues(entries: ReadonlyArray<readonly [string, string]>): void {
+  setMetaValues(entries: ReadonlyArray<readonly [string, string | null]>): void {
     if (entries.length === 0) return;
-    const statement = this.db.prepare(
+    const upsert = this.db.prepare(
       `INSERT INTO boucle_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     );
+    const clear = this.db.prepare(`DELETE FROM boucle_meta WHERE key = ?`);
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      for (const [key, value] of entries) statement.run(key, value);
+      for (const [key, value] of entries) {
+        if (value === null) clear.run(key);
+        else upsert.run(key, value);
+      }
       this.db.exec("COMMIT");
     } catch (error) {
       this.db.exec("ROLLBACK");

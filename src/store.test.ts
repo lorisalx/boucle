@@ -88,3 +88,17 @@ test("linking a t3code chat preserves the ticket's browser chat", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("setting a meta value to null clears the override", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "boucle-store-meta-test-"));
+  const dbPath = join(dir, "meta.db");
+  try {
+    const store = new BoucleStore(dbPath, { appName: "Boucle", ownerName: "", orgName: "", demoMode: false });
+    store.setMetaValues([["chatModel", "custom-model"]]);
+    assert.equal(store.getMeta("chatModel"), "custom-model");
+    store.setMetaValues([["chatModel", null]]);
+    assert.equal(store.getMeta("chatModel"), null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

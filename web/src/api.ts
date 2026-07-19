@@ -99,7 +99,7 @@ export type SettingsField =
   | "t3codeUrl"
   | "t3codeToken"
   | "t3codeProject";
-export type SettingsUpdate = Partial<Record<SettingsField, string>>;
+export type SettingsUpdate = Partial<Record<SettingsField, string | null>>;
 
 export interface ChatEntry {
   role: "user" | "assistant" | "tool";
@@ -311,7 +311,7 @@ export const api = {
     title: string;
     project?: string | null;
     bucket?: TicketBucket | null;
-    kind?: TicketKind;
+    kind?: TicketKind | "auto";
     chat?: boolean;
     autoRoute?: boolean;
   }) =>

@@ -86,6 +86,7 @@ function Kbd({ light, children }: { light?: boolean; children: string }) {
 }
 
 type VoiceState = "idle" | "requesting" | "recording" | "uploading" | "success" | "error";
+type CaptureKind = TicketKind | "auto";
 
 function audioExtension(mimeType: string): string {
   const mime = mimeType.split(";", 1)[0]?.toLowerCase();
@@ -109,7 +110,7 @@ export function CaptureModal() {
   const identity = useIdentity();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<TicketKind>("idea");
+  const [kind, setKind] = useState<CaptureKind>("auto");
   const [project, setProject] = useState<string>("");
   const [chat, setChat] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -134,31 +135,28 @@ export function CaptureModal() {
   // A paste that reads like a blob (multi-line or long) is AI-split territory.
   const bulk = text.includes("\n") || text.trim().length > 160;
 
+  const resetAndOpen = useCallback((preset: string | null) => {
+    setProject(preset ?? "");
+    setKind("auto");
+    setChat(true);
+    setVoiceState("idle");
+    setVoiceError(null);
+    setElapsedSeconds(0);
+    setSelected(null);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = null;
+    setOpen(true);
+  }, []);
+
   useEffect(() => {
     const onOpen = (e: Event) => {
       const preset = (e as CustomEvent<{ project: string | null }>).detail?.project ?? null;
-      setProject(preset ?? "");
-      setKind(preset ? "task" : "idea");
-      setChat(true);
-      setVoiceState("idle");
-      setVoiceError(null);
-      setElapsedSeconds(0);
-      setSelected(null);
-      if (successTimerRef.current) clearTimeout(successTimerRef.current);
-      successTimerRef.current = null;
-      setOpen(true);
+      resetAndOpen(preset);
     };
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setProject("");
-        setKind("idea");
-        setChat(true);
-        setVoiceState("idle");
-        setVoiceError(null);
-        setElapsedSeconds(0);
-        setSelected(null);
-        setOpen(true);
+        resetAndOpen(null);
       } else if (e.key === "Escape") {
         setOpen(false);
       }
@@ -169,7 +167,7 @@ export function CaptureModal() {
       window.removeEventListener("boucle:capture", onOpen);
       window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [resetAndOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -430,7 +428,7 @@ export function CaptureModal() {
                 } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   capture();
-                } else if (e.key === "Enter" && !e.shiftKey) {
+                } else if (e.key === "Enter" && !e.shiftKey && !bulk) {
                   e.preventDefault();
                   const result = selected === null ? undefined : results[selected];
                   if (result) openResult(result.url);
@@ -478,10 +476,16 @@ export function CaptureModal() {
             <div className={cx("overflow-hidden transition-all duration-200", bulk ? "-ml-2 max-w-0 opacity-0" : "max-w-44 opacity-100")}>
               <DropdownMenu>
                 <DropdownMenuTrigger className={CHIP} disabled={bulk} title="What is this item?">
-                  <KindIcon kind={kind} /> {KIND_LABEL[kind]}
+                  {kind === "auto" ? <SparklesIcon className="size-3.5 text-accent-text" /> : <KindIcon kind={kind} />}
+                  {kind === "auto" ? "Auto" : KIND_LABEL[kind]}
                   <ChevronDownIcon className="size-3 text-dim" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-40">
+                  <DropdownMenuItem onClick={() => setKind("auto")}>
+                    <SparklesIcon className="size-3.5 text-accent-text" /> Auto
+                    {kind === "auto" ? <CheckIcon className="ml-auto size-3.5 text-accent-text" /> : null}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   {KIND_ORDER.map((k) => (
                     <DropdownMenuItem key={k} onClick={() => setKind(k)}>
                       <KindIcon kind={k} /> {KIND_LABEL[k]}
@@ -643,7 +647,9 @@ export function CaptureModal() {
           </button>
         </div>
         <footer className="border-t border-border px-4 py-2 text-center text-[10px] text-dim">
-          ↵ capture · ↑↓ results · ⌘↵ capture · esc close
+          {bulk
+            ? "↵ newline · ⌘↵ capture · ↑↓ results · esc close"
+            : "↵ capture · ⇧↵ newline · ↑↓ results · ⌘↵ capture · esc close"}
         </footer>
       </section>
     </div>

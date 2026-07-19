@@ -113,6 +113,8 @@ Install Vibe, set `MISTRAL_API_KEY`, and leave `BOUCLE_RUNNER` unset for the exi
 
 Install and authenticate the Codex CLI, then select `codex` globally or on one loop. Boucle runs `codex exec` with a scoped `CODEX_HOME`, danger-full-access sandbox mode, the loop work directory, and a generated Streamable HTTP MCP entry. Resume is used when the installed CLI advertises `codex exec resume`. Codex cost is stored as null when its session data does not expose a price, and the UI displays `n/a`.
 
+Boucle carries only `~/.codex/auth.json` into the scoped `CODEX_HOME`. It does not carry a customized `~/.codex/config.toml`, including alternate provider or base URL settings. Loop runs use Codex's stock provider configuration plus Boucle's generated MCP entry.
+
 ### Claude
 
 Install and authenticate Claude Code, then select `claude` globally or on one loop. Boucle uses print mode with JSON output and a generated `--mcp-config`. It uses `--dangerously-skip-permissions` only when the installed CLI advertises the flag, otherwise it allows Boucle MCP tools explicitly. Claude's result envelope supplies the session ID, final text, and reported cost.

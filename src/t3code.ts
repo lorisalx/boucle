@@ -48,6 +48,14 @@ const DEFAULT_SPAWN_MODEL_SELECTION = {
 
 let cachedEnvId: { readonly baseUrl: string; readonly id: string } | null = null;
 
+async function fetchT3Code(cfg: T3CodeConfig, path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${cfg.baseUrl}${path}`, init);
+  } catch {
+    throw new Error(`t3code unreachable at ${cfg.baseUrl}: check the URL and token`);
+  }
+}
+
 /** Resolve t3code through boucle_meta first, then environment. URL + token enable the integration. */
 export function getT3CodeConfig(store: SettingsStore | null): T3CodeConfig | null {
   const settings = resolveT3CodeSettings(store);
@@ -61,7 +69,7 @@ export function getT3CodeConfig(store: SettingsStore | null): T3CodeConfig | nul
 export async function fetchT3CodeEnvironmentId(cfg: T3CodeConfig): Promise<string> {
   if (cachedEnvId?.baseUrl === cfg.baseUrl) return cachedEnvId.id;
   try {
-    const response = await fetch(`${cfg.baseUrl}/.well-known/t3/environment`, {
+    const response = await fetchT3Code(cfg, "/.well-known/t3/environment", {
       headers: { authorization: `Bearer ${cfg.token}` },
     });
     if (response.ok) {
@@ -98,7 +106,7 @@ function matchProject(projects: readonly SnapshotProject[], target: string): Sna
 }
 
 async function dispatch(cfg: T3CodeConfig, command: unknown): Promise<void> {
-  const response = await fetch(`${cfg.baseUrl}/api/orchestration/dispatch`, {
+  const response = await fetchT3Code(cfg, "/api/orchestration/dispatch", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${cfg.token}` },
     body: JSON.stringify(command),
@@ -113,7 +121,7 @@ export async function spawnT3CodeChat(cfg: T3CodeConfig, input: SpawnT3CodeInput
   if (!cfg.defaultProject) {
     throw new Error("BOUCLE_T3CODE_PROJECT is required before spawning a t3code chat.");
   }
-  const snapshotResponse = await fetch(`${cfg.baseUrl}/api/orchestration/snapshot`, {
+  const snapshotResponse = await fetchT3Code(cfg, "/api/orchestration/snapshot", {
     headers: { authorization: `Bearer ${cfg.token}` },
   });
   if (!snapshotResponse.ok) {

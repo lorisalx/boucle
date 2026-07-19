@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { api, type SettingSource, type SettingsField, type SettingsUpdate } from "./api.ts";
+import { api, type SettingSource, type Settings, type SettingsField, type SettingsUpdate } from "./api.ts";
 import { refreshIdentity, useIdentity } from "./hooks.ts";
 import { Button, Status } from "./ui.tsx";
 
@@ -35,26 +35,45 @@ function Card({ title, description, children }: { title: string; description: st
   );
 }
 
-export function Settings() {
-  const settings = useIdentity();
-  const [identityForm, setIdentityForm] = useState({
-    appName: settings.appName,
-    ownerName: settings.ownerName,
-    orgName: settings.orgName,
-  });
-  const [providerForm, setProviderForm] = useState({
+function identityValues(settings: Settings) {
+  return { appName: settings.appName, ownerName: settings.ownerName, orgName: settings.orgName };
+}
+
+function providerValues(settings: Settings) {
+  return {
     provider: settings.provider,
     chatModel: settings.chatModel,
     embedModel: settings.embedModel,
     transcribeModel: settings.transcribeModel,
     openaiBaseUrl: settings.openaiBaseUrl,
-  });
-  const [runnerForm, setRunnerForm] = useState({
+  };
+}
+
+function runnerValues(settings: Settings) {
+  return {
     runner: settings.runner,
     t3codeUrl: settings.t3codeUrl,
     t3codeToken: settings.t3codeToken,
     t3codeProject: settings.t3codeProject,
-  });
+  };
+}
+
+function dirtyUpdate<T extends object>(current: T, initial: T): SettingsUpdate {
+  const update: SettingsUpdate = {};
+  for (const [key, value] of Object.entries(current) as Array<[SettingsField, string]>) {
+    if (value !== (initial as Record<SettingsField, string>)[key]) update[key] = value;
+  }
+  return update;
+}
+
+export function Settings() {
+  const settings = useIdentity();
+  const [identityForm, setIdentityForm] = useState(() => identityValues(settings));
+  const [identityInitial, setIdentityInitial] = useState(() => identityValues(settings));
+  const [providerForm, setProviderForm] = useState(() => providerValues(settings));
+  const [providerInitial, setProviderInitial] = useState(() => providerValues(settings));
+  const [runnerForm, setRunnerForm] = useState(() => runnerValues(settings));
+  const [runnerInitial, setRunnerInitial] = useState(() => runnerValues(settings));
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [runnerError, setRunnerError] = useState<string | null>(null);
@@ -64,20 +83,15 @@ export function Settings() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setIdentityForm({ appName: settings.appName, ownerName: settings.ownerName, orgName: settings.orgName });
-    setProviderForm({
-      provider: settings.provider,
-      chatModel: settings.chatModel,
-      embedModel: settings.embedModel,
-      transcribeModel: settings.transcribeModel,
-      openaiBaseUrl: settings.openaiBaseUrl,
-    });
-    setRunnerForm({
-      runner: settings.runner,
-      t3codeUrl: settings.t3codeUrl,
-      t3codeToken: settings.t3codeToken,
-      t3codeProject: settings.t3codeProject,
-    });
+    const identity = identityValues(settings);
+    const provider = providerValues(settings);
+    const runner = runnerValues(settings);
+    setIdentityForm(identity);
+    setIdentityInitial(identity);
+    setProviderForm(provider);
+    setProviderInitial(provider);
+    setRunnerForm(runner);
+    setRunnerInitial(runner);
   }, [settings]);
 
   useEffect(() => {
@@ -111,9 +125,7 @@ export function Settings() {
 
   const source = (field: SettingsField) => settings.sources[field];
   const saveRunner = () => {
-    const update: SettingsUpdate = { ...runnerForm };
-    if (settings.t3codeTokenPresent && !runnerForm.t3codeToken.trim()) delete update.t3codeToken;
-    void save("runner", update);
+    void save("runner", dirtyUpdate(runnerForm, runnerInitial));
   };
 
   return (
@@ -146,7 +158,7 @@ export function Settings() {
             </Field>
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <Button disabled={saving !== null} onClick={() => void save("identity", identityForm)}>
+            <Button disabled={saving !== null} onClick={() => void save("identity", dirtyUpdate(identityForm, identityInitial))}>
               {saving === "identity" ? "Saving…" : "Save identity"}
             </Button>
             {saved === "identity" ? <span className="text-xs text-success">Saved.</span> : null}
@@ -216,7 +228,7 @@ export function Settings() {
           </div>
           <p className="mt-2 text-[11px] text-dim">API keys remain environment-only and are never stored in Boucle.</p>
           <div className="mt-4 flex items-center gap-3">
-            <Button disabled={saving !== null} onClick={() => void save("provider", providerForm)}>
+            <Button disabled={saving !== null} onClick={() => void save("provider", dirtyUpdate(providerForm, providerInitial))}>
               {saving === "provider" ? "Saving…" : "Save provider"}
             </Button>
             {saved === "provider" ? <span className="text-xs text-success">Saved.</span> : null}
@@ -275,7 +287,7 @@ export function Settings() {
               {saving === "runner" ? "Saving…" : "Save runner"}
             </Button>
             {settings.t3codeTokenPresent ? (
-              <Button disabled={saving !== null} variant="outline" onClick={() => void save("runner", { t3codeToken: "" })}>
+              <Button disabled={saving !== null} variant="outline" onClick={() => void save("runner", { t3codeToken: null })}>
                 Clear t3code token
               </Button>
             ) : null}
