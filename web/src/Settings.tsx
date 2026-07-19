@@ -36,7 +36,7 @@ function Card({ title, description, children }: { title: string; description: st
 }
 
 function identityValues(settings: Settings) {
-  return { appName: settings.appName, ownerName: settings.ownerName, orgName: settings.orgName };
+  return { ownerName: settings.ownerName, orgName: settings.orgName };
 }
 
 function providerValues(settings: Settings) {
@@ -135,13 +135,6 @@ export function Settings() {
       <div className="flex flex-col gap-6">
         <Card title="Identity" description="Names shown in the interface and used to give agent prompts context.">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="App name" source={source("appName")}>
-              <input
-                className={INPUT}
-                value={identityForm.appName}
-                onChange={(event) => setIdentityForm((value) => ({ ...value, appName: event.target.value }))}
-              />
-            </Field>
             <Field label="Owner name" source={source("ownerName")}>
               <input
                 className={INPUT}

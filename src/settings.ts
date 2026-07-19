@@ -41,7 +41,6 @@ export interface ResolvedT3CodeSettings {
 }
 
 export const CONFIGURABLE_SETTING_KEYS = [
-  "appName",
   "ownerName",
   "orgName",
   "provider",
@@ -57,6 +56,12 @@ export const CONFIGURABLE_SETTING_KEYS = [
 
 export type ConfigurableSettingKey = (typeof CONFIGURABLE_SETTING_KEYS)[number];
 export type SettingsUpdate = Partial<Record<ConfigurableSettingKey, string | null>>;
+
+function envOnlySetting(envName: string, fallback: string): ResolvedSetting<string> {
+  const env = process.env[envName];
+  if (env !== undefined && env.trim().length > 0) return { value: env.trim(), source: "env" };
+  return { value: fallback, source: "default" };
+}
 
 function stringSetting(store: SettingsStore | null, key: string, envName: string, fallback: string): ResolvedSetting<string> {
   const meta = store?.getMeta(key);
@@ -77,7 +82,9 @@ export function resolveRunnerSetting(store: SettingsStore | null): ResolvedSetti
 
 export function resolveIdentitySettings(store: SettingsStore | null, demoMode: boolean): ResolvedIdentitySettings {
   return {
-    appName: stringSetting(store, "appName", "BOUCLE_APP_NAME", "Boucle"),
+    // App name is env-only (BOUCLE_APP_NAME): renaming the product is an install
+    // decision, not a runtime setting, so meta overrides are ignored.
+    appName: envOnlySetting("BOUCLE_APP_NAME", "Boucle"),
     ownerName: stringSetting(store, "ownerName", "BOUCLE_OWNER_NAME", demoMode ? "Nora Bellier" : ""),
     orgName: stringSetting(store, "orgName", "BOUCLE_ORG_NAME", demoMode ? "Brumeline" : ""),
   };
