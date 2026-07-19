@@ -182,10 +182,10 @@ export function Loops() {
               <Switch on={l.enabled} />
             </button>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <button
                   onClick={() => navigate(`#/loops/${l.loopId}`)}
-                  className="truncate text-left text-sm font-medium text-fg hover:underline"
+                  className="w-full truncate text-left text-sm font-medium text-fg hover:underline sm:w-auto"
                 >
                   {l.name}
                 </button>

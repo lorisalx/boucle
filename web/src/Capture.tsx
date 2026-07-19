@@ -396,7 +396,7 @@ export function CaptureModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex animate-in items-start justify-center bg-black/50 px-4 pt-[12vh] fade-in-0 duration-150"
+      className="fixed inset-0 z-50 flex animate-in items-start justify-center bg-black/50 px-4 pt-[5vh] fade-in-0 sm:pt-[12vh] duration-150"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -477,7 +477,7 @@ export function CaptureModal() {
               <DropdownMenu>
                 <DropdownMenuTrigger className={CHIP} disabled={bulk} title="What is this item?">
                   {kind === "auto" ? <SparklesIcon className="size-3.5 text-accent-text" /> : <KindIcon kind={kind} />}
-                  {kind === "auto" ? "Auto" : KIND_LABEL[kind]}
+                  {kind === "auto" ? "Auto kind" : KIND_LABEL[kind]}
                   <ChevronDownIcon className="size-3 text-dim" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-40">
