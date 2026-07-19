@@ -398,7 +398,7 @@ export function CaptureModal() {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex animate-in items-start justify-center bg-black/50 px-4 pt-[12vh] fade-in-0 duration-150"
+      className="fixed inset-0 z-50 flex animate-in items-start justify-center bg-black/50 px-4 pt-[12vh] fade-in-0 duration-150"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) close();
       }}
