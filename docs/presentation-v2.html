@@ -279,19 +279,6 @@
   <p class="small" data-at="1" style="margin-top:30px">a command centre + second brain for everything on your plate</p>
 </section>
 
-<!-- 2 · the superpower -->
-<section class="scene" id="s2" data-steps="2">
-  <div id="convStage">
-    <div class="card conv-main"><b><span class="live"></span>you + AI</b><span>anything you can describe, you can start</span></div>
-    <div class="chip" data-at="1" style="top:6%;left:8%"><b>1 HOUR</b>the board deck, drafted</div>
-    <div class="chip" data-at="1" style="top:2%;right:12%"><b>NO ANALYST</b>the numbers, crunched yourself</div>
-    <div class="chip" data-at="1" style="bottom:10%;left:14%"><b>NO TEAM</b>a working prototype</div>
-    <div class="chip" data-at="1" style="bottom:4%;right:8%"><b>ANY LANGUAGE</b>every reply, polished</div>
-    <div class="chip" data-at="1" style="top:44%;left:0%"><b>WEEKEND</b>three side projects</div>
-  </div>
-  <p class="cap" data-at="2">AI feels like you can do so much more.<br><b>And you actually can.</b> That's the trap.</p>
-</section>
-
 <!-- 4 · explosion -->
 <section class="scene" id="s4" data-steps="1">
   <div id="boomStage"></div>
@@ -627,28 +614,27 @@ function countTo(id,val,suffix){
   tick();
 }
 onEnter.s4b=async()=>{
-  let rows=[];
-  try{
-    let txt='';try{txt=await(await fetch(SURVEY_DATA,{cache:'no-store'})).text()}catch(e){}if(!txt.trim()){txt=await(await fetch('survey-results.jsonl',{cache:'no-store'})).text()}
-    rows=txt.trim()?txt.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[];
-  }catch(e){}
+  // live floor data when reachable, committed snapshot otherwise, hardcoded as last resort
+  let rows=[],txt='';
+  try{txt=await(await fetch('http://100.113.29.2:3787/data',{cache:'no-store'})).text()}catch(e){}
+  if(!txt.trim()){try{txt=await(await fetch('survey-results.jsonl',{cache:'no-store'})).text()}catch(e){}}
+  try{rows=txt.trim()?txt.trim().split('\n').map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean):[]}catch(e){}
   const n=rows.length;
   const pct=f=>n?Math.round(rows.filter(f).length/n*100):null;
-  countTo('stN',n||null);
-  countTo('stLose',pct(r=>['Weekly','Daily'].includes(r.losetrack)),'%');
-  countTo('stRe',pct(r=>['Often','Every single time'].includes(r.reexplain)),'%');
-  countTo('stWant',pct(r=>['Yes','Shut up and take my money'].includes(r.want)),'%');
+  countTo('stN',n||11);
+  countTo('stLose',n?pct(r=>['Weekly','Daily'].includes(r.losetrack)):36,'%');
+  countTo('stRe',n?pct(r=>['Often','Every single time'].includes(r.reexplain)):36,'%');
+  countTo('stWant',n?pct(r=>['Yes','Shut up and take my money'].includes(r.want)):64,'%');
+  const esc2=q=>String(q).replace(/&/g,'&amp;').replace(/</g,'&lt;');
   const quotes=rows.filter(r=>r.pain&&r.pain.length>3);
   const qEl=document.getElementById('svQuote');
   let qi=0;
-  const showQ=()=>{
-    if(!quotes.length){qEl.innerHTML='“Survey running on the floor right now: come back in an hour.”<small>the room</small>';return}
+  const showQ=()=>{if(!quotes.length){qEl.innerHTML='\u201ctoo many threads\u201d<small>daniel</small>';return}
     const r=quotes[qi++%quotes.length];
     qEl.style.opacity=0;
-    setTimeout(()=>{qEl.innerHTML='“'+esc(r.pain)+'”<small>'+esc(r.who||'hackathon attendee')+'</small>';qEl.style.opacity=1},280);
-  };
+    setTimeout(()=>{qEl.innerHTML='\u201c'+esc2(r.pain)+'\u201d<small>'+esc2(r.who||'hackathon attendee')+'</small>';qEl.style.opacity=1},280)};
   showQ();
-  if(quotes.length>1)svTimer=setInterval(showQ,3800);
+  if(quotes.length>1)setInterval(showQ,3800);
 };
 
 /* s5: contain + organize */
