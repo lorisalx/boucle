@@ -8,9 +8,8 @@ import {
   RepeatIcon,
   SettingsIcon,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { api } from "./api.ts";
 import { openCapture } from "./Capture.tsx";
 import { navigate, useHashRoute, useIdentity } from "./hooks.ts";
 import { Mark, ThemeToggle, cx } from "./ui.tsx";
@@ -35,55 +34,6 @@ function activeHash(hash: string): string {
   return "#/";
 }
 
-/** Cumulative agent spend, refreshed once a minute. The ramp appears here and only here. */
-function BudgetMeter({ warnUsd, stopUsd }: { warnUsd: number; stopUsd: number }) {
-  const [spend, setSpend] = useState<number | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    const pull = () =>
-      api.loops
-        .list()
-        .then((loops) => {
-          if (!alive) return;
-          const cum = Math.max(0, ...loops.map((l) => l.cumulativeCostUsd ?? 0));
-          setSpend(cum);
-          setWarning(loops.find((l) => l.budgetWarning)?.budgetWarning ?? null);
-        })
-        .catch(() => undefined);
-    pull();
-    const t = setInterval(pull, 60_000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, []);
-
-  if (spend === null) return null;
-  const thresholdTitle = `Warning at $${warnUsd.toFixed(2)}; hard stop at $${stopUsd.toFixed(2)}.`;
-  return (
-    <div className="rounded-lg border border-border bg-surface px-2.5 py-2" title={warning ?? thresholdTitle}>
-      <div className="mb-1.5 flex items-baseline justify-between text-[11px]">
-        <span className="text-muted">Agent budget</span>
-        <span className="font-mono font-medium tabular-nums text-fg">
-          ${spend.toFixed(2)} / ${stopUsd.toFixed(2)}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-border">
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${stopUsd === 0 ? 100 : Math.min(100, (spend / stopUsd) * 100)}%`,
-            minWidth: spend > 0 ? "4px" : 0,
-            background: "var(--ramp)",
-          }}
-        />
-      </div>
-      {warning ? <p className="mt-1.5 text-[10px] leading-tight text-danger">{warning}</p> : null}
-    </div>
-  );
-}
 
 function NavLinks({ hash, compact }: { hash: string; compact?: boolean }) {
   const active = activeHash(hash);
@@ -120,7 +70,7 @@ function initials(name: string): string {
 
 /**
  * The Vibe-style app frame: paper main pane, sidebar one shade deeper with the
- * brand, nav, budget meter, and the owner identity block.
+ * brand, nav, and the owner identity block.
  */
 export function Shell({ children }: { children: ReactNode }) {
   const hash = useHashRoute();
@@ -148,7 +98,6 @@ export function Shell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
-          <BudgetMeter warnUsd={identity.budgetWarnUsd} stopUsd={identity.budgetStopUsd} />
           <div className="flex items-center gap-2 px-1.5 py-1">
             <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface text-[10px] font-bold text-fg">
               {initials(identity.ownerName)}

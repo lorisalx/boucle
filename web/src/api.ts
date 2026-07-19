@@ -80,8 +80,6 @@ export interface Settings {
   mistralApiKeyPresent: boolean;
   openaiApiKeyPresent: boolean;
   sources: Record<SettingsField, SettingSource>;
-  budgetWarnUsd: number;
-  budgetStopUsd: number;
 }
 
 export type SettingSource = "meta" | "env" | "default";

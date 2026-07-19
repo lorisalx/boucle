@@ -36,8 +36,6 @@ const IDENTITY_FALLBACK: Settings = {
     t3codeToken: "default",
     t3codeProject: "default",
   },
-  budgetWarnUsd: 10,
-  budgetStopUsd: 30,
 };
 
 let identityCache: Settings | null = null;

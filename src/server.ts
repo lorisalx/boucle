@@ -27,7 +27,7 @@ import {
   type TicketStatus,
   type UpdateLoopInput,
 } from "./store.ts";
-import { getAgentBudgetThresholds, LoopScheduler } from "./scheduler.ts";
+import { LoopScheduler } from "./scheduler.ts";
 import { createBoucleMcpServer, getMcpToken, mcpConfigToml } from "./mcp.ts";
 import {
   appendBrainMessage,
@@ -395,7 +395,6 @@ app.post("/api/vibe/:scope/:sessionId/send", async (c) => {
 function settingsResponse() {
   const identity = getIdentity();
   const settings = resolveSettings(store, identity.demoMode);
-  const budget = getAgentBudgetThresholds();
   const sources = Object.fromEntries(
     CONFIGURABLE_SETTING_KEYS.map((key) => [key, settings[key].source]),
   ) as Record<ConfigurableSettingKey, ResolvedSettings[ConfigurableSettingKey]["source"]>;
@@ -420,8 +419,6 @@ function settingsResponse() {
     mistralApiKeyPresent: (process.env.MISTRAL_API_KEY ?? "").trim().length > 0,
     openaiApiKeyPresent: (process.env.OPENAI_API_KEY ?? "").trim().length > 0,
     sources,
-    budgetWarnUsd: budget.warnUsd,
-    budgetStopUsd: budget.stopUsd,
   };
 }
 
