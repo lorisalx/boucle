@@ -811,6 +811,7 @@ app.get("/api/mcp-info", (c) => {
 // Static web (built by Vite into ./web/dist), with SPA fallback.
 app.use("/assets/*", serveStatic({ root: "./web/dist" }));
 app.use("/brand/*", serveStatic({ root: "./web/dist" }));
+app.get("/favicon.svg", serveStatic({ path: "./web/dist/favicon.svg" }));
 app.get("/", serveStatic({ path: "./web/dist/index.html" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
