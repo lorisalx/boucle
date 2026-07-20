@@ -34,6 +34,32 @@ export function resolveDbPath(explicit?: string | undefined): string {
 
 export const BOUCLE_PORT = Number.parseInt(process.env.BOUCLE_PORT ?? "4419", 10);
 
+/**
+ * The interface the HTTP server binds to. Defaults to loopback so a fresh install is
+ * never reachable off-box; set BOUCLE_HOST=0.0.0.0 (or a specific address) to expose it
+ * deliberately, ideally behind a reverse proxy that terminates auth.
+ */
+export const BOUCLE_HOST = (process.env.BOUCLE_HOST ?? "127.0.0.1").trim() || "127.0.0.1";
+
+/**
+ * Optional operator token. When set, the HTTP API requires it (Bearer header or the
+ * boucle_auth cookie). When unset the API is open, matching the original localhost demo.
+ */
+export function operatorAuthToken(): string | null {
+  const token = (process.env.BOUCLE_AUTH_TOKEN ?? "").trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
+ * Whether unattended agent runs are granted full, unsandboxed host access.
+ * Off by default: runs stay inside the runner's sandbox and reach Boucle only through the
+ * scoped MCP tools. Set BOUCLE_UNATTENDED_FULL_ACCESS=1 to opt into full access deliberately.
+ */
+export function unattendedFullAccess(): boolean {
+  const value = (process.env.BOUCLE_UNATTENDED_FULL_ACCESS ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 /** The brain root — `$BOUCLE_BRAIN_DIR ?? <repo>/fake-brain` (the bundled demo dataset). */
 export function resolveBrainDir(): string {
   const base = (process.env.BOUCLE_BRAIN_DIR ?? "").trim();
