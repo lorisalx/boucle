@@ -12,6 +12,7 @@ import {
   tomlString,
   writeTranscriptFallback,
 } from "./agent-process.ts";
+import { unattendedFullAccess } from "./config.ts";
 import type { AgentExecResult, AgentExecSpec, AgentRunner, Transcript, TranscriptEntry } from "./runner.ts";
 
 interface JsonRecord {
@@ -197,9 +198,12 @@ export class CodexRunner implements AgentRunner {
 
     let prompt = spec.prompt;
     const resume = spec.resumeSessionId ? await supportsResume(binary) : false;
+    // Prompts are store-sourced, so full host access stays opt-in; default to a writable-workspace
+    // sandbox that still lets the run touch the workdir and reach Boucle via scoped MCP tools.
+    const sandbox = unattendedFullAccess() ? "danger-full-access" : "workspace-write";
     const args = resume
       ? ["exec", "resume", "--skip-git-repo-check", "--json"]
-      : ["exec", "--skip-git-repo-check", "--sandbox", "danger-full-access", "-C", spec.workdir, "--json"];
+      : ["exec", "--skip-git-repo-check", "--sandbox", sandbox, "-C", spec.workdir, "--json"];
     if (spec.model?.trim()) args.push("--model", spec.model.trim());
     if (resume && spec.resumeSessionId) args.push(spec.resumeSessionId);
     if (spec.resumeSessionId && !resume) {

@@ -11,6 +11,7 @@ import {
   safeScope,
   writeTranscriptFallback,
 } from "./agent-process.ts";
+import { unattendedFullAccess } from "./config.ts";
 import type { AgentExecResult, AgentExecSpec, AgentRunner, Transcript, TranscriptEntry } from "./runner.ts";
 
 interface ClaudeEnvelope {
@@ -159,8 +160,13 @@ export class ClaudeRunner implements AgentRunner {
       mcpPath,
       "--strict-mcp-config",
     ];
-    if (await supportsDangerousPermissions(binary)) args.push("--dangerously-skip-permissions");
-    else args.push("--allowedTools", "mcp__boucle__*");
+    // --dangerously-skip-permissions removes every guardrail for a store-sourced prompt, so it stays
+    // opt-in. By default, scope the run to Boucle's MCP tools instead of skipping permissions.
+    if (unattendedFullAccess() && (await supportsDangerousPermissions(binary))) {
+      args.push("--dangerously-skip-permissions");
+    } else {
+      args.push("--allowedTools", "mcp__boucle__*");
+    }
     if (spec.model?.trim()) args.push("--model", spec.model.trim());
     if (spec.resumeSessionId) args.push("--resume", spec.resumeSessionId);
     if (spec.maxPriceUsd > 0) args.push("--max-budget-usd", String(spec.maxPriceUsd));

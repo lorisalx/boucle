@@ -5,15 +5,16 @@
  *
  * The web polls the API for live-ish updates; mutations are synchronous.
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
 
-import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { BOUCLE_HOST, BOUCLE_PORT, operatorAuthToken, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
@@ -87,6 +88,52 @@ initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
 const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
+
+/** Length-safe constant-time string compare, so token checks do not leak bytes via timing. */
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+const AUTH_COOKIE = "boucle_auth";
+
+/** A request is authorized when auth is disabled, or it presents the operator token (header or cookie). */
+function authorized(c: Context): boolean {
+  const token = operatorAuthToken();
+  if (!token) return true;
+  const header = c.req.header("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (bearer && safeEqual(bearer, token)) return true;
+  const cookie = getCookie(c, AUTH_COOKIE) ?? "";
+  return cookie.length > 0 && safeEqual(cookie, token);
+}
+
+// Opt-in auth over the whole HTTP API. No-op (open) when BOUCLE_AUTH_TOKEN is unset, so the
+// localhost demo is unchanged; a hard gate once an operator sets the token. Registered before
+// the routes so it wraps every /api/* handler, including /api/mcp-info.
+app.use("/api/*", async (c, next) => {
+  if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
+  await next();
+});
+
+// Exchange the operator token for an httpOnly session cookie, so a browser can authenticate once.
+app.post("/auth", async (c) => {
+  const token = operatorAuthToken();
+  if (!token) return c.json({ ok: true, authRequired: false });
+  const body = (await c.req.json().catch(() => ({}))) as { token?: string };
+  if (typeof body.token !== "string" || !safeEqual(body.token, token)) {
+    return c.json({ error: "invalid token" }, 401);
+  }
+  setCookie(c, AUTH_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return c.json({ ok: true });
+});
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -798,7 +845,9 @@ app.post("/api/chats/:conversationId/messages", async (c) => {
 // MCP — BOUCLE's tools for Codex/Claude over HTTP (bearer-gated, one server per request).
 app.all("/mcp", async (c) => {
   const token = getMcpToken(store);
-  if (c.req.header("authorization") !== `Bearer ${token}`) {
+  const header = c.req.header("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!safeEqual(bearer, token)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   const mcp = createBoucleMcpServer(store);
@@ -823,8 +872,8 @@ app.get("/favicon.svg", serveStatic({ path: "./web/dist/favicon.svg" }));
 app.get("/", serveStatic({ path: "./web/dist/index.html" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
-serve({ fetch: app.fetch, port: BOUCLE_PORT }, (info) => {
+serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE_HOST }, (info) => {
   scheduler.start();
   void search.bootstrap().catch(() => {});
-  process.stdout.write(`boucle server on http://localhost:${info.port}\n`);
+  process.stdout.write(`boucle server on http://${info.address}:${info.port}\n`);
 });
