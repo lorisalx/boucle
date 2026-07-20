@@ -3,6 +3,7 @@
  */
 import { BOUCLE_PORT } from "./config.ts";
 import { getMcpToken } from "./mcp.ts";
+import { statusProtocolInstruction, type TicketReconciler } from "./reconcile.ts";
 import { getAgentRunner, type AgentExecResult, type AgentExecSpec, type AgentRunner } from "./runner.ts";
 import type { RunnerName } from "./settings.ts";
 import type { BoucleStore, Loop, LoopRun, LoopRunTrigger } from "./store.ts";
@@ -71,11 +72,23 @@ export class LoopScheduler {
   private readonly store: BoucleStore;
   private readonly dbPath: string;
   private readonly runnerOverride: AgentRunner | null;
+  /**
+   * Optional: lets a finished ticket run converge immediately instead of waiting for the
+   * reconciler's own tick. The reconciler remains authoritative and independently timed —
+   * this is an accelerator, never the mechanism.
+   */
+  private readonly reconciler: TicketReconciler | null;
 
-  constructor(store: BoucleStore, dbPath: string, runner: AgentRunner | null = null) {
+  constructor(
+    store: BoucleStore,
+    dbPath: string,
+    runner: AgentRunner | null = null,
+    reconciler: TicketReconciler | null = null,
+  ) {
     this.store = store;
     this.dbPath = dbPath;
     this.runnerOverride = runner;
+    this.reconciler = reconciler;
   }
 
   start(): void {
@@ -100,6 +113,14 @@ export class LoopScheduler {
   }
 
   private tick(): void {
+    // Opportunistic only, and deliberately ABOVE the loopEnabled gate: a disabled scheduler
+    // must never stop finished agent threads from updating their tickets. The reconciler's
+    // own timer is the guarantee; this just converges an active instance faster.
+    try {
+      this.reconciler?.reconcileOnce();
+    } catch (error) {
+      console.error(`[reconcile] ${error instanceof Error ? error.message : String(error)}`);
+    }
     if (this.store.getMeta("loopEnabled") !== "1") return;
     const nowMs = Date.now();
     for (const loop of this.store.listEnabledLoops()) {
@@ -167,14 +188,17 @@ export class LoopScheduler {
     const runner = this.runnerFor(null);
     this.store.addEvent(ticketId, "note", `${runner.name} re-run requested`);
     this.execTracked(runner, {
-      prompt,
+      // The agent must know how to report back, or the run finishes unreconcilable.
+      prompt: `${prompt}\n\n${statusProtocolInstruction()}`,
       model: this.auxiliaryModel(runner),
       resumeSessionId: null,
       scope: `${key}:${Date.now()}`,
-    }, "enrich")
+    }, "enrich", ticketId)
       .then((res) => {
         const status = res.timedOut ? "timed out" : res.code === 0 ? "finished" : "failed";
         this.store.addEvent(ticketId, "note", `${runner.name} re-run ${status}`);
+        // Converge immediately rather than waiting up to a full reconcile interval.
+        this.reconciler?.reconcileOnce();
       })
       .catch((err: unknown) => {
         const detail = err instanceof Error ? err.message : String(err);
@@ -341,9 +365,13 @@ export class LoopScheduler {
     runner: AgentRunner,
     spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope" | "title">,
     trigger: "smart_capture" | "enrich" | "vibe_thread",
+    ticketId: string | null = null,
   ): Promise<AgentExecResult> {
     const auxiliaryLoopId = `${runner.name}:${trigger}`;
     const run = this.store.recordRunStart(auxiliaryLoopId, trigger, runner.name);
+    // Link at start, not finish: a run that dies mid-flight still carries its ticket, so the
+    // reconciler can see it and record the no-STATUS outcome instead of losing it entirely.
+    if (ticketId !== null) this.store.linkRunToTicket(run.runId, ticketId);
     return this.execRunner(runner, spec)
       .then((res) => {
         const status = res.timedOut ? "timeout" : res.code === 0 ? "ok" : "error";

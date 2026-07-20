@@ -9,6 +9,7 @@ import {
   executeBoucleTool,
 } from "./boucle-tools.ts";
 import { getProjectPage } from "./projects.ts";
+import { statusProtocolInstruction } from "./reconcile.ts";
 import { getProvider } from "./providers/index.ts";
 import { appendLegacyMessage, getLegacyTranscript, isLegacyMistralConfigured } from "./providers/mistral-legacy.ts";
 import type { ChatMessage, ToolCall, ToolSpec } from "./providers/types.ts";
@@ -152,6 +153,7 @@ export function buildTicketChatPrompt(ticket: Ticket): string {
   if (ticket.nextAction) lines.push(`Next action: ${ticket.nextAction}`);
   const page = ticket.project ? getProjectPage(ticket.project) : null;
   if (page) lines.push("", `Current ${identity.demoMode ? "synthetic " : ""}project page (${page.projectId}):`, page.body);
+  lines.push("", statusProtocolInstruction());
   return lines.join("\n");
 }
 
