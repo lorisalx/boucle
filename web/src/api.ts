@@ -256,7 +256,14 @@ export interface Meeting {
   body: string;
 }
 
+/** Fired whenever an API response comes back with 401, so the auth gate can intercept globally. */
+export const AUTH_REQUIRED_EVENT = "boucle:auth-required";
+
 async function json<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent(AUTH_REQUIRED_EVENT));
+    throw new Error("unauthorized");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
@@ -279,6 +286,28 @@ const put = (path: string, body: unknown) =>
   });
 
 export const api = {
+  /**
+   * Exchange the operator token for a session cookie. Returns `{ ok: true }` on
+   * success, or throws when the token is wrong. When auth is disabled the server
+   * returns `{ ok: true, authRequired: false }` without setting a cookie.
+   */
+  login: (token: string) =>
+    fetch("/auth", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token }),
+    }).then((r) => json<{ ok: boolean; authRequired?: boolean }>(r)),
+
+  /**
+   * Probe whether auth is currently required. Returns `true` when the server
+   * responds 401, `false` on any successful response (auth disabled or valid cookie).
+   */
+  checkAuth: () =>
+    fetch("/api/health").then((r) => {
+      if (r.status === 401) return true;
+      return false;
+    }),
+
   meta: () => fetch("/api/meta").then((r) => json<{ workdir: string }>(r)),
   search: (query: string) =>
     fetch(`/api/search?q=${encodeURIComponent(query)}`).then((r) => json<SearchResponse>(r)),
