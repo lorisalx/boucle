@@ -4,7 +4,7 @@ Boucle is a self-hosted chief-of-staff loop. It turns captures into tickets, run
 
 The workflow is capture → tickets → loops → brain. SQLite stores tickets, conversations, schedules, and cost records. Markdown files remain the source of truth for project and meeting context.
 
-> [Screenshot placeholder](docs/screenshots/tour/). Replace it when the neutral product tour is ready.
+![The Boucle queue: capture box, activity heatmap, and project cards](docs/screenshot.png)
 
 ## Architecture
 
