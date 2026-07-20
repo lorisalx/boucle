@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 
 import { resolveBrainDir } from "./config.ts";
+import { isValidProjectId } from "./project-id.ts";
 import type { ProjectMeta, Ticket } from "./store.ts";
 
 const BRAIN_DIR = resolveBrainDir();
@@ -232,10 +233,10 @@ function extractLinks(frontmatter: Record<string, string>): Array<{ label: strin
   return links;
 }
 
-/** Only well-formed slugs may touch the filesystem / shell. */
-export function isValidProjectId(id: string): boolean {
-  return /^[a-z0-9][a-z0-9._-]{0,80}$/i.test(id);
-}
+// Slug rules live in project-id.ts so the store and HTTP layers can share them
+// without pulling in this module's filesystem and shell dependencies.
+export { normalizeProjectId } from "./project-id.ts";
+export { isValidProjectId };
 
 function projectFilePath(projectId: string): string {
   return join(BRAIN_PROJECTS_DIR, `${projectId}.md`);

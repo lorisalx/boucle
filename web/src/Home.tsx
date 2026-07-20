@@ -149,9 +149,11 @@ function fmtDay(iso: string): string {
 function ActivityGrid({
   rows,
   activity,
+  stalled,
 }: {
   rows: Array<{ id: string | null; label: string }>;
   activity: ActivityRow[];
+  stalled: Array<{ projectId: string; title: string; openTicketCount: number }>;
 }) {
   const days = useMemo(() => lastDays(ACTIVITY_DAYS), []);
   const byKey = useMemo(() => {
@@ -213,6 +215,16 @@ function ActivityGrid({
         </span>
         <span />
       </div>
+      {stalled.length > 0 ? (
+        <p className="mt-2.5 border-t border-border pt-2 text-[11px] text-dim">
+          <span className="font-medium text-muted">
+            Stalled · {stalled.length} {stalled.length === 1 ? "project" : "projects"}
+          </span>
+          {" — "}
+          {stalled.reduce((n, p) => n + p.openTicketCount, 0)} open, nothing resolved in {ACTIVITY_DAYS}d:{" "}
+          {stalled.map((p) => p.title).join(", ")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -545,11 +557,17 @@ export function Home() {
     [board, misc],
   );
 
-  // The grid only rows out the projects that are truly alive (open items, or
-  // something resolved in the window); everything else folds into "Misc & other".
+  // The grid answers "what is moving", so a project earns a row only by resolving
+  // something in the window. Having open work is not movement — a project with open
+  // items and nothing resolved is stalled, and it gets called out under the grid
+  // instead of occupying a row of empty cells. Everything else folds into "Misc & other".
   const activeInWindow = useMemo(() => new Set(activity.map((a) => a.project ?? "")), [activity]);
   const gridProjects = useMemo(
-    () => board.filter((p) => p.openTicketCount > 0 || activeInWindow.has(p.projectId)),
+    () => board.filter((p) => activeInWindow.has(p.projectId)),
+    [board, activeInWindow],
+  );
+  const stalledProjects = useMemo(
+    () => board.filter((p) => p.openTicketCount > 0 && !activeInWindow.has(p.projectId)),
     [board, activeInWindow],
   );
   const activityRows = useMemo(
@@ -665,7 +683,7 @@ export function Home() {
 
       {activity.length > 0 ? (
         <div className="mb-4">
-          <ActivityGrid rows={activityRows} activity={gridActivity} />
+          <ActivityGrid rows={activityRows} activity={gridActivity} stalled={stalledProjects} />
         </div>
       ) : null}
 

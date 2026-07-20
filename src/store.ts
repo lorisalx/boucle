@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { resolveBrainDir } from "./config.ts";
 import { getIdentity, type Identity } from "./identity.ts";
+import { normalizeProjectId } from "./project-id.ts";
 import type { RunnerName } from "./settings.ts";
 
 export type TicketStatus =
@@ -1231,7 +1232,9 @@ export class BoucleStore {
       kind: existing?.kind ?? input.kind ?? "task",
       bucket: existing ? existing.bucket : (input.bucket ?? bucketFromPriority(priority)),
       score: 0,
-      project: existing ? existing.project : (input.project ?? null),
+      // Normalized on the way in: a path or a stray-cased variant stored verbatim
+      // would never match its brain page, splitting the project's history in two.
+      project: existing ? existing.project : normalizeProjectId(input.project),
       source: input.source,
       sourceRef: input.sourceRef ?? existing?.sourceRef ?? null,
       permalink: input.permalink ?? existing?.permalink ?? null,
@@ -1331,7 +1334,7 @@ export class BoucleStore {
       priority: input.priority ?? prev.priority,
       kind: input.kind ?? prev.kind,
       bucket: input.bucket !== undefined ? input.bucket : prev.bucket,
-      project: input.project !== undefined ? input.project : prev.project,
+      project: input.project !== undefined ? normalizeProjectId(input.project) : prev.project,
       needs: input.needs ?? prev.needs,
       effort: input.effort !== undefined ? input.effort : prev.effort,
       dueAt: input.dueAt !== undefined ? input.dueAt : prev.dueAt,

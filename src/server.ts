@@ -40,6 +40,7 @@ import {
 } from "./chat.ts";
 import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
 import { inferCaptureKind } from "./capture-kind.ts";
+import { normalizeProjectId } from "./project-id.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -237,7 +238,16 @@ app.get("/api/tickets/:id", (c) => {
   });
 });
 
-app.post("/api/tickets/upsert", async (c) => c.json(store.upsert(await c.req.json())));
+/** The MCP tools reject a malformed project slug; the HTTP door must agree. */
+function badProject(project: unknown): boolean {
+  return typeof project === "string" && project.trim() !== "" && normalizeProjectId(project) === null;
+}
+
+app.post("/api/tickets/upsert", async (c) => {
+  const body = (await c.req.json()) as { project?: unknown };
+  if (badProject(body.project)) return c.json({ error: "project must be a valid project slug" }, 400);
+  return c.json(store.upsert(body as Parameters<typeof store.upsert>[0]));
+});
 
 app.post("/api/tickets/:id/transition", async (c) => {
   const body = (await c.req.json()) as {
@@ -259,6 +269,7 @@ app.post("/api/tickets/:id/transition", async (c) => {
 
 app.post("/api/tickets/:id/set", async (c) => {
   const body = (await c.req.json()) as Omit<SetTicketFieldsInput, "ticketId">;
+  if (badProject(body.project)) return c.json({ error: "project must be a valid project slug" }, 400);
   return c.json(store.setFields({ ...body, ticketId: c.req.param("id") }));
 });
 
