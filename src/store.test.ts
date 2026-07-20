@@ -102,3 +102,33 @@ test("setting a meta value to null clears the override", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("NUL bytes are stripped from title, body, and nextAction on upsert and setFields", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "boucle-store-nul-test-"));
+  const dbPath = join(dir, "nul.db");
+  try {
+    const store = new BoucleStore(dbPath, { appName: "Boucle", ownerName: "", orgName: "", demoMode: false });
+    const ticket = store.upsert({
+      dedupeKey: "test:nul",
+      title: "Fix\0 the\0 thing",
+      body: "body\0 with\0 nuls",
+      source: "manual",
+      nextAction: "do\0 it",
+    });
+    assert.equal(ticket.title, "Fix the thing");
+    assert.equal(ticket.body, "body with nuls");
+    assert.equal(ticket.nextAction, "do it");
+
+    const updated = store.setFields({
+      ticketId: ticket.ticketId,
+      title: "Updated\0 title",
+      body: "updated\0 body",
+      nextAction: "next\0 action",
+    });
+    assert.equal(updated.title, "Updated title");
+    assert.equal(updated.body, "updated body");
+    assert.equal(updated.nextAction, "next action");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -663,7 +663,7 @@ function startSmartCapture(text: string, project: string | null): { ok: true; ba
 
 app.post("/api/capture/smart", async (c) => {
   const body = (await c.req.json()) as { text: string; project?: string | null };
-  const text = (body.text ?? "").trim();
+  const text = (body.text ?? "").replace(/\0/g, "").trim();
   if (!text) return c.json({ error: "text required" }, 400);
   try {
     return c.json(startSmartCapture(text, body.project ?? null), 202);
@@ -691,7 +691,8 @@ app.post("/api/capture/voice", async (c) => {
   const projectValue = form.get("project");
   const project = typeof projectValue === "string" && projectValue.trim() ? projectValue.trim() : null;
   try {
-    const transcript = await provider.transcribe(file, file.name || "capture.webm");
+    const rawTranscript = await provider.transcribe(file, file.name || "capture.webm");
+    const transcript = rawTranscript.replace(/\0/g, "");
     return c.json({ ...startSmartCapture(transcript, project), transcript }, 202);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
