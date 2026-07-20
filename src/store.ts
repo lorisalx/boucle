@@ -919,12 +919,14 @@ export class BoucleStore {
       CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);
       CREATE TABLE IF NOT EXISTS ticket_events (
         event_id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, kind TEXT NOT NULL,
-        summary TEXT NOT NULL, created_at TEXT NOT NULL
+        summary TEXT NOT NULL, to_status TEXT, created_at TEXT NOT NULL,
+        FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_id, created_at);
       CREATE TABLE IF NOT EXISTS ticket_source_events (
         event_id TEXT PRIMARY KEY, source TEXT NOT NULL, source_ref TEXT NOT NULL,
-        dedupe_key TEXT NOT NULL UNIQUE, ticket_id TEXT, decision TEXT NOT NULL, seen_at TEXT NOT NULL
+        dedupe_key TEXT NOT NULL UNIQUE, ticket_id TEXT, decision TEXT NOT NULL, seen_at TEXT NOT NULL,
+        FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE SET NULL
       );
       CREATE TABLE IF NOT EXISTS boucle_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS loops (
@@ -965,8 +967,28 @@ export class BoucleStore {
     if (resolvedIdentity.demoMode) this.seedTickets();
   }
 
-  /** Additive column migrations for DBs created before a column existed. */
+  /** Run a function inside an IMMEDIATE transaction so a partial failure never half-applies. */
+  private tx<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** The migration level this build knows how to reach; bump when adding a step below. */
+  private static readonly SCHEMA_VERSION = 1;
+
+  /** Additive column migrations for DBs created before a column existed. Transactional and versioned. */
   private migrate(): void {
+    this.tx(() => this.migrateSteps());
+  }
+
+  private migrateSteps(): void {
     const cols = this.db.prepare(`PRAGMA table_info(tickets)`).all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "work_ref")) {
       this.db.exec(`ALTER TABLE tickets ADD COLUMN work_ref TEXT`);
@@ -1017,27 +1039,35 @@ export class BoucleStore {
       // Every run recorded before multi-runner support came from Vibe.
       this.db.exec(`UPDATE loop_runs SET runner = 'vibe' WHERE runner IS NULL`);
     }
-    // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
-    //
-    // These fixups are unguarded and re-run on every boot, which suits the seeded demo but
-    // would fight a real install, so t3code loops are excluded from both:
-    //   - the model reset would stomp a deliberate model choice (a t3code loop names its
-    //     agent through `model`, e.g. claude-sonnet-5) on every restart;
-    //   - the thread reset would drop the loop's t3code thread every restart, so each run
-    //     would open a new chat instead of continuing the existing conversation.
-    this.db.exec(`
-      UPDATE loops SET model = 'devstral-2512'
-      WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
-        AND COALESCE(runner, '') != 't3code'
-        AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
-      UPDATE loops SET interval_minutes = 60
-      WHERE name = 'Meetings' AND interval_minutes < 60;
-      UPDATE loops
-      SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
-      WHERE thread_id IS NOT NULL
-        AND COALESCE(thread_project, '') != 'vibe'
-        AND COALESCE(runner, '') != 't3code';
-    `);
+    const eventCols = this.db.prepare(`PRAGMA table_info(ticket_events)`).all() as Array<{ name: string }>;
+    if (!eventCols.some((c) => c.name === "to_status")) {
+      this.db.exec(`ALTER TABLE ticket_events ADD COLUMN to_status TEXT`);
+    }
+
+    // Versioned one-off fixups. Gated on user_version so a long-lived instance runs them exactly
+    // once instead of replaying on every boot. t3code loops are still excluded from the resets:
+    //   - the model reset would stomp a deliberate model choice (a t3code loop names its agent
+    //     through `model`, e.g. claude-sonnet-5);
+    //   - the thread reset would drop the loop's t3code thread, so each run would open a new chat
+    //     instead of continuing the existing conversation.
+    const userVersion = (this.db.prepare(`PRAGMA user_version`).get() as { user_version: number }).user_version;
+    if (userVersion < 1) {
+      // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
+      this.db.exec(`
+        UPDATE loops SET model = 'devstral-2512'
+        WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
+          AND COALESCE(runner, '') != 't3code'
+          AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
+        UPDATE loops SET interval_minutes = 60
+        WHERE name = 'Meetings' AND interval_minutes < 60;
+        UPDATE loops
+        SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
+        WHERE thread_id IS NOT NULL
+          AND COALESCE(thread_project, '') != 'vibe'
+          AND COALESCE(runner, '') != 't3code';
+      `);
+    }
+    this.db.exec(`PRAGMA user_version = ${BoucleStore.SCHEMA_VERSION}`);
   }
 
   createConversation(input: CreateConversationInput): ConversationRecord {
@@ -1172,10 +1202,16 @@ export class BoucleStore {
       .run(now);
   }
 
-  private recordEvent(ticketId: string, kind: TicketEventKind, summary: string, at: string): void {
+  private recordEvent(
+    ticketId: string,
+    kind: TicketEventKind,
+    summary: string,
+    at: string,
+    toStatus: string | null = null,
+  ): void {
     this.db
-      .prepare(`INSERT INTO ticket_events (event_id, ticket_id, kind, summary, created_at) VALUES (?,?,?,?,?)`)
-      .run(randomUUID(), ticketId, kind, summary, at);
+      .prepare(`INSERT INTO ticket_events (event_id, ticket_id, kind, summary, to_status, created_at) VALUES (?,?,?,?,?,?)`)
+      .run(randomUUID(), ticketId, kind, summary, toStatus, at);
     this.searchIndexer?.reindexTicket(ticketId);
   }
 
@@ -1317,7 +1353,7 @@ export class BoucleStore {
     this.writeTicket(updated);
     const note = toStatus === "snoozed" && snooze ? ` (until ${snooze})` : "";
     const why = reason && reason.trim().length > 0 ? ` — ${reason.trim()}` : "";
-    this.recordEvent(ticketId, "status", `${prev.status} → ${toStatus}${note}${why}`, now.toISOString());
+    this.recordEvent(ticketId, "status", `${prev.status} → ${toStatus}${note}${why}`, now.toISOString(), toStatus);
     if (ref !== prev.workRef && ref) this.recordEvent(ticketId, "chat", `Linked work: ${ref}`, now.toISOString());
     return updated;
   }
@@ -1381,7 +1417,7 @@ export class BoucleStore {
       const woke: Ticket = { ...t, status: "next", snoozedUntil: null, updatedAt: nowIso };
       woke.score = computeScore(woke, now.getTime());
       this.writeTicket(woke);
-      this.recordEvent(t.ticketId, "status", `snoozed → next (woke up)`, nowIso);
+      this.recordEvent(t.ticketId, "status", `snoozed → next (woke up)`, nowIso, "next");
     }
     return due.length;
   }
@@ -1438,9 +1474,13 @@ export class BoucleStore {
     const since = new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
     return this.db
       .prepare(
+        // Prefer the structured to_status; fall back to the legacy prose match for rows written
+        // before that column existed, so historical activity keeps rendering.
         `SELECT substr(e.created_at, 1, 10) AS day, t.project AS project, COUNT(*) AS count
          FROM ticket_events e JOIN tickets t ON t.ticket_id = e.ticket_id
-         WHERE e.kind = 'status' AND e.summary LIKE '%→ done%' AND e.created_at >= ?
+         WHERE e.kind = 'status'
+           AND (e.to_status = 'done' OR (e.to_status IS NULL AND e.summary LIKE '%→ done%'))
+           AND e.created_at >= ?
          GROUP BY day, project ORDER BY day ASC`,
       )
       .all(since) as Array<{ day: string; project: string | null; count: number }>;

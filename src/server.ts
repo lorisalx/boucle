@@ -13,6 +13,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import { z } from "zod";
 
 import { BOUCLE_HOST, BOUCLE_PORT, operatorAuthToken, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
@@ -290,10 +291,36 @@ function badProject(project: unknown): boolean {
   return typeof project === "string" && project.trim() !== "" && normalizeProjectId(project) === null;
 }
 
+// Validate the upsert body before it reaches the store, matching the guard the other
+// mutating routes already apply. Unknown keys are stripped rather than trusted.
+const upsertSchema = z.object({
+  dedupeKey: z.string().min(1),
+  title: z.string().min(1),
+  source: z.enum(["slack", "gmail", "gcal", "manual"]),
+  body: z.string().optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+  kind: z.enum(["task", "idea", "conv", "scope"]).optional(),
+  bucket: z.enum(["urgent", "to_do_next", "cool_to_do", "maybe_one_day"]).nullish(),
+  project: z.string().nullish(),
+  sourceRef: z.string().nullish(),
+  permalink: z.string().nullish(),
+  requester: z.string().nullish(),
+  needs: z.enum(["claude", "codex", "human", "none"]).optional(),
+  effort: z.enum(["xs", "s", "m", "l", "xl"]).nullish(),
+  dueAt: z.string().nullish(),
+  nextAction: z.string().nullish(),
+  threadId: z.string().nullish(),
+  t3codeThreadId: z.string().nullish(),
+  t3codeOpenUrl: z.string().nullish(),
+  createdBy: z.enum(["chief", "human"]).optional(),
+});
+
 app.post("/api/tickets/upsert", async (c) => {
-  const body = (await c.req.json()) as { project?: unknown };
-  if (badProject(body.project)) return c.json({ error: "project must be a valid project slug" }, 400);
-  return c.json(store.upsert(body as Parameters<typeof store.upsert>[0]));
+  const parsed = upsertSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid ticket", detail: parsed.error.issues }, 400);
+  // The schema types `project` as a string; only the slug rules can say it is a real one.
+  if (badProject(parsed.data.project)) return c.json({ error: "project must be a valid project slug" }, 400);
+  return c.json(store.upsert(parsed.data));
 });
 
 app.post("/api/tickets/:id/transition", async (c) => {
