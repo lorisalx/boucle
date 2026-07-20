@@ -3,6 +3,7 @@ import { Brain as BrainGraph } from "./BrainGraph.tsx";
 import { CaptureModal } from "./Capture.tsx";
 import { Chat } from "./Chat.tsx";
 import { Home } from "./Home.tsx";
+import { Login } from "./Login.tsx";
 import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
 import { Projects } from "./Projects.tsx";
@@ -10,10 +11,15 @@ import { Settings } from "./Settings.tsx";
 import { Shell } from "./Shell.tsx";
 import { TicketDetail } from "./TicketDetail.tsx";
 import { VibeThread } from "./VibeThread.tsx";
-import { useHashRoute } from "./hooks.ts";
+import { useHashRoute, useAuthRequired } from "./hooks.ts";
 
 export function App() {
+  const { authRequired, login } = useAuthRequired();
   const hash = useHashRoute();
+
+  if (authRequired) {
+    return <Login onLogin={login} />;
+  }
   const chatMatch = /^\/chats\/([^/]+)$/.exec(window.location.pathname);
   const vibeMatch = /^\/vibe\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
   const agentMatch = /^\/agent\/(vibe|codex|claude)\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);

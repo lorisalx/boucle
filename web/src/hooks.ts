@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type Loop, type Meeting, type ProjectSummary, type Settings, type Ticket } from "./api.ts";
+import { api, AUTH_REQUIRED_EVENT, type Loop, type Meeting, type ProjectSummary, type Settings, type Ticket } from "./api.ts";
 
 const IDENTITY_FALLBACK: Settings = {
   appName: "Boucle",
@@ -215,4 +215,32 @@ export function useHashRoute(): string {
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
   return hash;
+}
+
+/**
+ * Returns `authRequired: true` when the server signals that a valid session is
+ * missing (any API call comes back 401). `login(token)` exchanges the operator
+ * token for a session cookie and reloads the app on success.
+ *
+ * This hook also probes `/api/health` on mount so that a fresh page load with an
+ * expired cookie shows the gate immediately rather than after the first data call.
+ */
+export function useAuthRequired(): { authRequired: boolean; login: (token: string) => Promise<void> } {
+  const [authRequired, setAuthRequired] = useState(false);
+
+  useEffect(() => {
+    const onAuthRequired = () => setAuthRequired(true);
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    // Eagerly probe so the gate appears before any data-fetch errors cascade.
+    void api.checkAuth().then((required) => { if (required) setAuthRequired(true); }).catch(() => undefined);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+  }, []);
+
+  const login = useCallback(async (token: string) => {
+    await api.login(token);
+    // Reload the full app so every pending data hook starts with a valid cookie.
+    window.location.reload();
+  }, []);
+
+  return { authRequired, login };
 }
