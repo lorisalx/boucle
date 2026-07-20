@@ -1629,20 +1629,34 @@ export class BoucleStore {
     return rows;
   }
 
-  getLoopCostSummary(warnThreshold = 10, stopThreshold = 30): LoopCostSummary {
+  getLoopCostSummary(warnThreshold = 10, stopThreshold = 30, windowDays = 30, reserveUnitUsd = 0): LoopCostSummary {
     // Vibe reports per-invocation cost, so loop, capture, and enrich rows are totaled here.
     // Conversations API responses do not expose billed cost; estimating browser chat,
     // describe, or brief spend would invent numbers, so those calls are excluded.
-    const row = this.db.prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs`).get() as { total: number };
-    const totalCostUsd = row.total;
+    //
+    // The cap is a rolling window, not a lifetime sum: an always-on instance can never wedge
+    // itself permanently on cumulative history — spend inside the window ages out as time passes.
+    // In-flight runs (still 'running', no recorded cost yet) reserve their max possible spend so
+    // several concurrent starts cannot all slip under the cap.
+    const windowStart = new Date(Date.now() - Math.max(1, windowDays) * DAY_MS).toISOString();
+    const recorded = (this.db
+      .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs WHERE started_at >= ?`)
+      .get(windowStart) as { total: number }).total;
+    const running = (this.db
+      .prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE status = 'running' AND started_at >= ?`)
+      .get(windowStart) as { n: number }).n;
+    const reserved = running * Math.max(0, reserveUnitUsd);
+    const projected = recorded + reserved;
+    const window = windowDays === 1 ? "today" : `the last ${windowDays} days`;
     return {
-      totalCostUsd,
-      warning: totalCostUsd >= stopThreshold
-        ? `Agent budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $${stopThreshold.toFixed(2)}).`
-        : totalCostUsd >= warnThreshold
-          ? `Agent spend has crossed the $${warnThreshold.toFixed(2)} warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
+      totalCostUsd: recorded,
+      warning: projected >= stopThreshold
+        ? `Agent budget exhausted for ${window} ($${recorded.toFixed(2)} recorded` +
+          `${reserved > 0 ? ` + $${reserved.toFixed(2)} reserved for in-flight runs` : ""}; hard stop at $${stopThreshold.toFixed(2)}).`
+        : projected >= warnThreshold
+          ? `Agent spend has crossed the $${warnThreshold.toFixed(2)} warning threshold for ${window} ($${recorded.toFixed(2)} recorded).`
           : null,
-      blocked: totalCostUsd >= stopThreshold,
+      blocked: projected >= stopThreshold,
     };
   }
 
