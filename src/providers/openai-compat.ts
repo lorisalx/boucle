@@ -142,8 +142,11 @@ export class OpenAICompatibleProvider implements Provider {
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${this.apiKey()}`);
-    if (!(init.body instanceof FormData)) headers.set("content-type", "application/json");
-    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    const isUpload = init.body instanceof FormData;
+    if (!isUpload) headers.set("content-type", "application/json");
+    // A hung upstream must fail the call rather than stall the loop; uploads get a longer budget.
+    const signal = init.signal ?? AbortSignal.timeout(isUpload ? 120_000 : 60_000);
+    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers, signal });
     if (!response.ok) {
       const detail = await response.text().catch(() => "");
       throw new ProviderRequestError(response.status, `${this.name} API failed (${response.status}): ${detail.slice(0, 300)}`);

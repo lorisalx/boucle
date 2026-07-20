@@ -17,6 +17,9 @@ function budgetThreshold(name: string, fallback: number): number {
 
 const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
 const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
+// The budget is a rolling window (default ~monthly), so a long-lived instance frees up spend over
+// time instead of bricking on cumulative history.
+const BUDGET_WINDOW_DAYS = Math.max(1, Math.trunc(budgetThreshold("BOUCLE_AGENT_BUDGET_WINDOW_DAYS", 30)));
 
 function positiveNumber(name: string, fallback: number): number {
   const value = Number.parseFloat(process.env[name] ?? "");
@@ -314,7 +317,11 @@ export class LoopScheduler {
   }
 
   getBudgetSummary() {
-    return this.store.getLoopCostSummary(BUDGET_WARN, BUDGET_STOP);
+    // Reserve each in-flight run's max spend against the window, so concurrent starts cannot all
+    // read the same under-cap total and slip through (the reservation reconciles to actual cost
+    // once the run records its finish).
+    const reserveUnit = positiveNumber("BOUCLE_VIBE_MAX_PRICE", 0.25);
+    return this.store.getLoopCostSummary(BUDGET_WARN, BUDGET_STOP, BUDGET_WINDOW_DAYS, reserveUnit);
   }
 
   /** Apply the cumulative hard stop to every agent entry point. */
