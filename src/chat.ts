@@ -2,12 +2,7 @@
 
 import { spawnedChatGuardrails } from "./config.ts";
 import { getIdentity, type Identity } from "./identity.ts";
-import {
-  BOUCLE_BRAIN_TOOL_NAMES,
-  buildBoucleBrainTools,
-  buildBoucleTools,
-  executeBoucleTool,
-} from "./boucle-tools.ts";
+import { buildBoucleBrainTools, buildBoucleTools, executeBoucleTool } from "./boucle-tools.ts";
 import { getProjectPage } from "./projects.ts";
 import { getProvider } from "./providers/index.ts";
 import { appendLegacyMessage, getLegacyTranscript, isLegacyMistralConfigured } from "./providers/mistral-legacy.ts";
@@ -98,7 +93,7 @@ async function relayUserMessage(store: BoucleStore, conversation: ConversationRe
   const tools: ToolSpec[] = [
     ...(conversation.kind === "brain" ? buildBoucleBrainTools(identity) : buildBoucleTools(identity)),
   ];
-  const allowedTools = conversation.kind === "brain" ? BOUCLE_BRAIN_TOOL_NAMES : undefined;
+  const allowedTools = conversation.kind === "brain" ? new Set(tools.map((tool) => tool.function.name)) : undefined;
   const messages: ChatMessage[] = [
     { role: "system", content: conversation.instructions },
     ...storedMessages(store, conversation.conversationId),

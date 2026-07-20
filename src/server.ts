@@ -14,6 +14,7 @@ import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
 
 import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { emit } from "./extensions/events.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
@@ -443,6 +444,7 @@ app.put("/api/settings", async (c) => {
     getIdentity(store);
     provider = getProvider(store);
     search.reconfigureProvider();
+    emit("settings.changed", { keys: Object.keys(update) });
     return c.json(settingsResponse());
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
@@ -511,6 +513,7 @@ app.post("/api/epics", async (c) => {
     kind,
     needs: wantsChat ? "claude" : "none",
   });
+  emit("capture.created", { text: title, kind, project: ticket.project, ticketId: ticket.ticketId });
   // The capture itself is always instant; routing happens behind it. A describe-chat
   // already researches + sets the project, so the micro-run only covers the chat-less path.
   if (!wantsChat && !ticket.project && body.autoRoute) {
@@ -581,7 +584,10 @@ app.post("/api/capture/smart", async (c) => {
   const text = (body.text ?? "").trim();
   if (!text) return c.json({ error: "text required" }, 400);
   try {
-    return c.json(startSmartCapture(text, body.project ?? null), 202);
+    const project = body.project ?? null;
+    const result = startSmartCapture(text, project);
+    emit("capture.created", { text, kind: "smart", project, ticketId: null });
+    return c.json(result, 202);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 402);
   }
@@ -607,7 +613,9 @@ app.post("/api/capture/voice", async (c) => {
   const project = typeof projectValue === "string" && projectValue.trim() ? projectValue.trim() : null;
   try {
     const transcript = await provider.transcribe(file, file.name || "capture.webm");
-    return c.json({ ...startSmartCapture(transcript, project), transcript }, 202);
+    const result = startSmartCapture(transcript, project);
+    emit("capture.created", { text: transcript, kind: "voice", project, ticketId: null });
+    return c.json({ ...result, transcript }, 202);
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
   }
@@ -815,5 +823,6 @@ app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 serve({ fetch: app.fetch, port: BOUCLE_PORT }, (info) => {
   scheduler.start();
   void search.bootstrap().catch(() => {});
+  emit("server.started", { port: info.port });
   process.stdout.write(`boucle server on http://localhost:${info.port}\n`);
 });

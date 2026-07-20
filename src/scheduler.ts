@@ -2,6 +2,7 @@
  * Boucle scheduler — owns loop timing and runs every due loop through its selected agent runner.
  */
 import { BOUCLE_PORT } from "./config.ts";
+import { emit } from "./extensions/events.ts";
 import { getMcpToken } from "./mcp.ts";
 import { getAgentRunner, type AgentExecResult, type AgentExecSpec, type AgentRunner } from "./runner.ts";
 import type { RunnerName } from "./settings.ts";
@@ -257,6 +258,13 @@ export class LoopScheduler {
           res.costUsd,
           res.sessionId,
         );
+        emit("loop.run.finished", {
+          loopId: loop.loopId,
+          loopName: loop.name,
+          ok: status === "ok",
+          costUsd: res.costUsd,
+          output: res.output,
+        });
         const updatedBudget = this.getBudgetSummary();
         if (updatedBudget.warning && updatedBudget.warning !== this.lastBudgetWarning) {
           console.warn(updatedBudget.warning);
@@ -274,6 +282,13 @@ export class LoopScheduler {
           null,
           null,
         );
+        emit("loop.run.finished", {
+          loopId: loop.loopId,
+          loopName: loop.name,
+          ok: false,
+          costUsd: null,
+          output: detail,
+        });
       })
       .finally(() => this.running.delete(loop.loopId));
     return run;
@@ -335,6 +350,7 @@ export class LoopScheduler {
     trigger: "smart_capture" | "enrich" | "vibe_thread",
   ): Promise<AgentExecResult> {
     const auxiliaryLoopId = `${runner.name}:${trigger}`;
+    const auxiliaryLoopName = `${runner.name} ${trigger}`;
     const run = this.store.recordRunStart(auxiliaryLoopId, trigger, runner.name);
     return this.execRunner(runner, spec)
       .then((res) => {
@@ -348,6 +364,13 @@ export class LoopScheduler {
           res.costUsd,
           res.sessionId,
         );
+        emit("loop.run.finished", {
+          loopId: auxiliaryLoopId,
+          loopName: auxiliaryLoopName,
+          ok: status === "ok",
+          costUsd: res.costUsd,
+          output: res.output,
+        });
         const updatedBudget = this.getBudgetSummary();
         if (updatedBudget.warning && updatedBudget.warning !== this.lastBudgetWarning) {
           console.warn(updatedBudget.warning);
@@ -366,6 +389,13 @@ export class LoopScheduler {
           null,
           null,
         );
+        emit("loop.run.finished", {
+          loopId: auxiliaryLoopId,
+          loopName: auxiliaryLoopName,
+          ok: false,
+          costUsd: null,
+          output: detail,
+        });
         throw err;
       });
   }

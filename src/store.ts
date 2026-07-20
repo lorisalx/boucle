@@ -9,6 +9,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { resolveBrainDir } from "./config.ts";
+import { emit } from "./extensions/events.ts";
 import { getIdentity, type Identity } from "./identity.ts";
 import type { RunnerName } from "./settings.ts";
 
@@ -1247,7 +1248,12 @@ export class BoucleStore {
         .prepare(`UPDATE tickets SET body = ?, permalink = ?, source_ref = ?, next_action = ? WHERE dedupe_key = ?`)
         .run(ticket.body, ticket.permalink, ticket.sourceRef, ticket.nextAction, input.dedupeKey);
       this.searchIndexer?.reindexTicket(ticket.ticketId);
-      return this.getByDedupeKey(input.dedupeKey)!;
+      const updated = this.getByDedupeKey(input.dedupeKey)!;
+      const changed = (["body", "permalink", "sourceRef", "nextAction"] as const).filter(
+        (key) => existing[key] !== updated[key],
+      );
+      emit("ticket.updated", { ticket: updated, changed: [...changed] });
+      return updated;
     }
     ticket.score = computeScore(ticket, nowMs);
     this.db
@@ -1264,6 +1270,7 @@ export class BoucleStore {
         ticket.updatedAt, ticket.createdBy,
       );
     this.recordEvent(ticket.ticketId, "created", `Captured from ${ticket.source}`, nowIso);
+    emit("ticket.created", { ticket });
     return ticket;
   }
 
@@ -1306,6 +1313,7 @@ export class BoucleStore {
     const why = reason && reason.trim().length > 0 ? ` — ${reason.trim()}` : "";
     this.recordEvent(ticketId, "status", `${prev.status} → ${toStatus}${note}${why}`, now.toISOString());
     if (ref !== prev.workRef && ref) this.recordEvent(ticketId, "chat", `Linked work: ${ref}`, now.toISOString());
+    emit("ticket.transitioned", { ticket: updated, from: prev.status, to: toStatus });
     return updated;
   }
 

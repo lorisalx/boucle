@@ -1,11 +1,13 @@
 // Read and append fallback for conversations created through Mistral's legacy Conversations API.
 
-import { executeBoucleTool, BOUCLE_BRAIN_TOOL_NAMES } from "../boucle-tools.ts";
+import { executeBoucleTool } from "../boucle-tools.ts";
 import type { BoucleStore } from "../store.ts";
 import type { ChatEntry, ChatTranscript } from "../chat.ts";
+import { listTools } from "../tools/registry.ts";
 
 const API_BASE = "https://api.mistral.ai";
 const MAX_TOOL_ROUNDS = 20;
+const READ_ONLY_TOOL_NAMES = new Set(listTools().filter((tool) => tool.readOnly).map((tool) => tool.name));
 
 interface FunctionCallEntry {
   readonly type: "function.call";
@@ -75,7 +77,7 @@ function parseArguments(value: FunctionCallEntry["arguments"]): Record<string, u
 
 async function resultEntry(call: FunctionCallEntry, store: BoucleStore, brainOnly: boolean): Promise<Record<string, unknown>> {
   try {
-    if (brainOnly && !BOUCLE_BRAIN_TOOL_NAMES.has(call.name)) {
+    if (brainOnly && !READ_ONLY_TOOL_NAMES.has(call.name)) {
       throw new Error(`Tool is not available in this read-only chat: ${call.name}`);
     }
     const result = await executeBoucleTool(store, call.name, parseArguments(call.arguments));
