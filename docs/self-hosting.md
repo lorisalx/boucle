@@ -46,6 +46,49 @@ node src/server.ts
 
 Boucle reads `.env` from the repository root. It listens on `http://localhost:4419` by default.
 
+## Environment file
+
+Boucle loads a `.env` file from the repository root at startup. The file is not required; all variables can also be passed through the process environment.
+
+### Creating your `.env`
+
+`.env.example` documents every supported variable with safe placeholder values. Copy it and fill in the keys you need:
+
+```sh
+cp .env.example .env
+chmod 600 .env   # keep secrets off the filesystem for other users
+```
+
+`.env` is listed in `.gitignore`. Never commit it. If you fork the repository, confirm the ignore entry is still present before pushing.
+
+### Rotating secrets
+
+Edit `.env`, replace the value, then restart the server. For systemd:
+
+```sh
+sudo systemctl restart boucle
+```
+
+The server reloads `.env` on startup, not at runtime. Running processes keep their original values until restarted.
+
+### Setting an auth token
+
+When Boucle is accessible beyond localhost, protect it with `BOUCLE_AUTH_TOKEN`:
+
+```dotenv
+BOUCLE_AUTH_TOKEN=replace_with_a_long_random_token
+```
+
+Generate one with:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+The web application shows a token prompt when the browser has no valid session cookie. Subsequent requests use an httpOnly cookie that lasts 30 days. API clients must present the token as `Authorization: Bearer <token>`.
+
+See [HTTPS and microphone access](#https-and-microphone-access) for serving Boucle over a secure connection, which is required for voice capture when accessed from a non-localhost address.
+
 ## Environment variables
 
 ### Core
@@ -53,8 +96,10 @@ Boucle reads `.env` from the repository root. It listens on `http://localhost:44
 | Variable | Default | Purpose |
 |---|---|---|
 | `BOUCLE_PORT` | `4419` | HTTP port for the API, web application, and MCP endpoint. |
+| `BOUCLE_HOST` | `127.0.0.1` | Address the HTTP server binds to. Leave as loopback for local use; set to a specific interface only when a reverse proxy or Tailscale Serve forwards traffic. |
 | `BOUCLE_DB` | `$XDG_DATA_HOME/boucle/boucle.db`, or `$HOME/.local/share/boucle/boucle.db` | SQLite database path. Parent directories are created. |
 | `BOUCLE_BRAIN_DIR` | Repository `fake-brain` directory | Root containing the `projects` and `meetings` directories. The default enables demo mode. |
+| `BOUCLE_AUTH_TOKEN` | Empty (open) | Operator bearer token. When set, every `/api/*` request must present it as `Authorization: Bearer <token>` or as an httpOnly session cookie issued by `POST /auth`. Unset means no authentication — suitable only for localhost use. |
 | `BOUCLE_MCP_TOKEN` | Generated once and stored in SQLite | Bearer token required by `/mcp`. |
 | `XDG_DATA_HOME` | Empty | Base directory used for the default database path. |
 | `HOME` | Process home directory | Fallback data directory and path redaction in MCP information. This normally stays inherited. |
@@ -196,7 +241,9 @@ sudo systemctl restart boucle
 
 ## HTTPS and microphone access
 
-Browser microphone access requires a secure context. `http://localhost:4419` is treated as secure for local use. Plain `http://<server-ip>:4419` is not. The microphone capture control will fail when the application is opened over a plain remote HTTP address.
+Browser microphone access requires a secure context. `http://localhost:4419` is treated as secure for local use. Any other plain `http://` address is not: the microphone button will be disabled when the app is opened over a remote HTTP URL.
+
+Serving over HTTPS also enables `BOUCLE_AUTH_TOKEN` to protect the API and the web application from unauthenticated access. Set the token and use one of the options below.
 
 ### Private access with Tailscale Serve
 
@@ -225,7 +272,7 @@ sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 ```
 
-Caddy obtains and renews the HTTPS certificate when public DNS and ports 80 and 443 are configured. Boucle does not provide user authentication. A public reverse proxy exposes the UI and API, including `/api/mcp-info`. Add an authentication layer or network restriction before using this setup with private data.
+Caddy obtains and renews the HTTPS certificate when public DNS and ports 80 and 443 are configured. Set `BOUCLE_AUTH_TOKEN` so the public endpoint requires a token before serving any data, including `/api/mcp-info`. A network restriction (firewall rule or VPN) provides an additional layer of defence.
 
 ## Use your own Markdown brain
 
