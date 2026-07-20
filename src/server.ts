@@ -12,6 +12,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
 import { Hono } from "hono";
+import { z } from "zod";
 
 import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
@@ -237,7 +238,35 @@ app.get("/api/tickets/:id", (c) => {
   });
 });
 
-app.post("/api/tickets/upsert", async (c) => c.json(store.upsert(await c.req.json())));
+// Validate the upsert body before it reaches the store, matching the guard the other
+// mutating routes already apply. Unknown keys are stripped rather than trusted.
+const upsertSchema = z.object({
+  dedupeKey: z.string().min(1),
+  title: z.string().min(1),
+  source: z.enum(["slack", "gmail", "gcal", "manual"]),
+  body: z.string().optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+  kind: z.enum(["task", "idea", "conv", "scope"]).optional(),
+  bucket: z.enum(["urgent", "to_do_next", "cool_to_do", "maybe_one_day"]).nullish(),
+  project: z.string().nullish(),
+  sourceRef: z.string().nullish(),
+  permalink: z.string().nullish(),
+  requester: z.string().nullish(),
+  needs: z.enum(["claude", "codex", "human", "none"]).optional(),
+  effort: z.enum(["xs", "s", "m", "l", "xl"]).nullish(),
+  dueAt: z.string().nullish(),
+  nextAction: z.string().nullish(),
+  threadId: z.string().nullish(),
+  t3codeThreadId: z.string().nullish(),
+  t3codeOpenUrl: z.string().nullish(),
+  createdBy: z.enum(["chief", "human"]).optional(),
+});
+
+app.post("/api/tickets/upsert", async (c) => {
+  const parsed = upsertSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid ticket", detail: parsed.error.issues }, 400);
+  return c.json(store.upsert(parsed.data));
+});
 
 app.post("/api/tickets/:id/transition", async (c) => {
   const body = (await c.req.json()) as {
