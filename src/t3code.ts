@@ -38,6 +38,12 @@ export interface ContinueT3CodeInput {
   readonly threadId: string;
   readonly title: string;
   readonly prompt: string;
+  /**
+   * Reasserted on every turn. A thread keeps whatever model it was created with,
+   * so without this a loop silently drifts off its configured model the moment
+   * the thread is switched by hand in t3code.
+   */
+  readonly modelSelection?: ModelSelection;
 }
 
 const T3CODE_FALLBACK_ENVIRONMENT_ID = "primary";
@@ -190,6 +196,7 @@ export async function continueT3CodeChat(
     commandId: randomUUID(),
     threadId: input.threadId,
     message: { messageId: randomUUID(), role: "user", text: input.prompt, attachments: [] },
+    ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
     titleSeed: input.title,
     runtimeMode: "full-access",
     interactionMode: "default",

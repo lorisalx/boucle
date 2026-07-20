@@ -56,6 +56,15 @@ test("t3code runner resumes an existing thread instead of opening a new chat", a
     // Resuming posts a turn only — no thread.create.
     assert.deepEqual(commands.map((command) => command.type), ["thread.turn.start"]);
     assert.equal(commands[0]?.threadId, "thread-1");
+    // The configured model is reasserted, so a hand-switched thread cannot drift.
+    assert.deepEqual(commands[0]?.modelSelection, {
+      instanceId: "claudeAgent",
+      model: "claude-sonnet-5",
+      options: [
+        { id: "effort", value: "medium" },
+        { id: "fastMode", value: false },
+      ],
+    });
     assert.equal(result.sessionId, "thread-1");
     assert.equal(result.openUrl, "https://t3.example/environment-1/thread-1");
     assert.equal(result.code, 0);

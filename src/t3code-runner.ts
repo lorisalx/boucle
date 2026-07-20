@@ -58,13 +58,17 @@ export class T3CodeRunner implements AgentRunner {
     // Prefer the caller's label; scope is an id, so it only serves as a last resort.
     const label = spec.title?.trim() || spec.scope;
     const title = spec.scope.startsWith("loops_") ? `Loop: ${label}` : label;
+    // Sent on continue as well as spawn: the loop's configured model is the source of
+    // truth for every run, not just the one that happened to create the thread.
+    const modelSelection = modelSelectionFor(spec.model);
     const result = spec.resumeSessionId
-      ? await continueT3CodeChat(cfg, { threadId: spec.resumeSessionId, title, prompt: spec.prompt })
-      : await spawnT3CodeChat(cfg, {
+      ? await continueT3CodeChat(cfg, {
+          threadId: spec.resumeSessionId,
           title,
           prompt: spec.prompt,
-          modelSelection: modelSelectionFor(spec.model),
-        });
+          ...(modelSelection ? { modelSelection } : {}),
+        })
+      : await spawnT3CodeChat(cfg, { title, prompt: spec.prompt, modelSelection });
 
     return {
       sessionId: result.threadId,
