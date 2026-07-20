@@ -245,7 +245,7 @@ export class LoopScheduler {
             loopId: loop.loopId,
             threadId: res.sessionId,
             threadProject: runner.name,
-            threadOpenUrl: null,
+            threadOpenUrl: res.openUrl ?? null,
           });
         }
         this.store.recordRunFinish(
@@ -283,6 +283,7 @@ export class LoopScheduler {
     return this.execRunner(runner, {
       prompt: buildLoopTurnPrompt(loop, trigger),
       model: loop.model,
+      title: loop.name,
       resumeSessionId: loop.threadProject === runner.name ? loop.threadId : null,
       scope: `loops_${loop.loopId}`,
     });
@@ -299,7 +300,7 @@ export class LoopScheduler {
 
   private execRunner(
     runner: AgentRunner,
-    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope" | "title">,
   ): Promise<AgentExecResult> {
     return runner.exec({
       ...spec,
@@ -331,7 +332,7 @@ export class LoopScheduler {
   /** Store one-shot agent work beside loop runs so its reported cost and session count toward the global budget. */
   private execTracked(
     runner: AgentRunner,
-    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope" | "title">,
     trigger: "smart_capture" | "enrich" | "vibe_thread",
   ): Promise<AgentExecResult> {
     const auxiliaryLoopId = `${runner.name}:${trigger}`;

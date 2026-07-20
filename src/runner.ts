@@ -3,6 +3,7 @@
 import { ClaudeRunner } from "./claude.ts";
 import { CodexRunner } from "./codex.ts";
 import { resolveRunnerSetting, type RunnerName, type SettingsStore } from "./settings.ts";
+import { T3CodeRunner } from "./t3code-runner.ts";
 import { execVibe } from "./vibe.ts";
 import { readVibeTranscript } from "./vibe-transcript.ts";
 
@@ -10,6 +11,8 @@ export interface AgentExecSpec {
   readonly prompt: string;
   readonly scope: string;
   readonly model: string | null;
+  /** Human-readable label for runners that surface the work as a named conversation. */
+  readonly title?: string | null;
   readonly mcpUrl: string;
   readonly mcpToken: string;
   readonly dbPath: string;
@@ -25,6 +28,8 @@ export interface AgentExecResult {
   readonly output: string;
   readonly code: number | null;
   readonly timedOut: boolean;
+  /** Deep link to the conversation, for runners that host it outside Boucle. */
+  readonly openUrl?: string | null;
 }
 
 export interface TranscriptEntry {
@@ -75,12 +80,15 @@ export class VibeRunner implements AgentRunner {
   }
 }
 
-const runners: Record<RunnerName, AgentRunner> = {
+const runners: Record<Exclude<RunnerName, "t3code">, AgentRunner> = {
   vibe: new VibeRunner(),
   codex: new CodexRunner(),
   claude: new ClaudeRunner(),
 };
 
 export function getAgentRunner(override: RunnerName | null = null, store: SettingsStore | null = null): AgentRunner {
-  return runners[override ?? resolveRunnerSetting(store).value];
+  const name = override ?? resolveRunnerSetting(store).value;
+  // t3code resolves per call: it needs the store to read its URL and token.
+  if (name === "t3code") return new T3CodeRunner(store ?? { getMeta: () => null });
+  return runners[name];
 }
