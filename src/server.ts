@@ -41,6 +41,7 @@ import {
   startBrainChat,
 } from "./chat.ts";
 import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
+import { TicketReconciler } from "./reconcile.ts";
 import { inferCaptureKind } from "./capture-kind.ts";
 import { normalizeProjectId } from "./project-id.ts";
 import {
@@ -87,7 +88,10 @@ try {
 const search = new BrainSearch(dbPath, store);
 initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
-const scheduler = new LoopScheduler(store, dbPath);
+// Reconciliation runs on its own timer, independent of whether any loop is enabled — see
+// the module header in reconcile.ts for why that independence is load-bearing.
+const reconciler = new TicketReconciler(store);
+const scheduler = new LoopScheduler(store, dbPath, null, reconciler);
 const app = new Hono();
 
 /** Length-safe constant-time string compare, so token checks do not leak bytes via timing. */
@@ -901,6 +905,8 @@ app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
 serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE_HOST }, (info) => {
   scheduler.start();
+  // Unconditional: not behind loopEnabled, not behind any loop's schedule or budget.
+  reconciler.start();
   void search.bootstrap().catch(() => {});
   process.stdout.write(`boucle server on http://${info.address}:${info.port}\n`);
 });

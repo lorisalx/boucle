@@ -942,7 +942,8 @@ export class BoucleStore {
       CREATE TABLE IF NOT EXISTS loop_runs (
         run_id TEXT PRIMARY KEY, loop_id TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT,
         status TEXT NOT NULL, exit_code INTEGER, summary TEXT NOT NULL DEFAULT '',
-        trigger TEXT NOT NULL DEFAULT 'schedule', cost_usd REAL, session_id TEXT, runner TEXT
+        trigger TEXT NOT NULL DEFAULT 'schedule', cost_usd REAL, session_id TEXT, runner TEXT,
+        ticket_id TEXT, reconciled_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_loop_runs_loop ON loop_runs(loop_id, started_at DESC);
       CREATE TABLE IF NOT EXISTS project_meta (
@@ -1039,6 +1040,23 @@ export class BoucleStore {
       // Every run recorded before multi-runner support came from Vibe.
       this.db.exec(`UPDATE loop_runs SET runner = 'vibe' WHERE runner IS NULL`);
     }
+    if (!runCols.some((c) => c.name === "ticket_id")) {
+      this.db.exec(`ALTER TABLE loop_runs ADD COLUMN ticket_id TEXT`);
+    }
+    if (!runCols.some((c) => c.name === "reconciled_at")) {
+      this.db.exec(`ALTER TABLE loop_runs ADD COLUMN reconciled_at TEXT`);
+      // Runs that finished before the reconciler existed predate the STATUS-line protocol.
+      // Mark them reconciled so the first scan does not replay months of history and
+      // re-transition tickets that a human has since moved on.
+      this.db.exec(`
+        UPDATE loop_runs SET reconciled_at = finished_at
+        WHERE reconciled_at IS NULL AND finished_at IS NOT NULL
+      `);
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_reconcile
+        ON loop_runs(reconciled_at, finished_at) WHERE ticket_id IS NOT NULL
+    `);
     const eventCols = this.db.prepare(`PRAGMA table_info(ticket_events)`).all() as Array<{ name: string }>;
     if (!eventCols.some((c) => c.name === "to_status")) {
       this.db.exec(`ALTER TABLE ticket_events ADD COLUMN to_status TEXT`);
@@ -1668,6 +1686,36 @@ export class BoucleStore {
       .prepare(`UPDATE loop_runs SET finished_at = ?, status = ?, exit_code = ?, summary = ?, cost_usd = ?, session_id = ? WHERE run_id = ?`)
       .run(finishedAt, status, exitCode, summary, costUsd, sessionId, runId);
     this.db.prepare(`UPDATE loops SET last_status = ? WHERE loop_id = ?`).run(status, loopId);
+  }
+
+  /**
+   * Link a run to the ticket it is working on, so the reconciler can find it after it
+   * finishes. Called at start time — a run that dies mid-flight still carries its link.
+   */
+  linkRunToTicket(runId: string, ticketId: string): void {
+    this.db.prepare(`UPDATE loop_runs SET ticket_id = ? WHERE run_id = ?`).run(ticketId, runId);
+  }
+
+  /**
+   * Finished, ticket-linked runs that the reconciler has not processed yet.
+   * Ordered oldest-first so a backlog is applied in the order the work actually happened.
+   */
+  listUnreconciledRuns(limit = 50): Array<{ runId: string; ticketId: string; status: LoopRunStatus; summary: string }> {
+    return this.db
+      .prepare(
+        `SELECT run_id AS runId, ticket_id AS ticketId, status, summary
+         FROM loop_runs
+         WHERE ticket_id IS NOT NULL AND finished_at IS NOT NULL AND reconciled_at IS NULL
+         ORDER BY finished_at ASC LIMIT ?`,
+      )
+      .all(limit) as unknown as Array<{ runId: string; ticketId: string; status: LoopRunStatus; summary: string }>;
+  }
+
+  /** Mark a run as processed by the reconciler. Idempotent: a second call is a no-op update. */
+  markRunReconciled(runId: string): void {
+    this.db
+      .prepare(`UPDATE loop_runs SET reconciled_at = ? WHERE run_id = ? AND reconciled_at IS NULL`)
+      .run(new Date().toISOString(), runId);
   }
 
   listRuns(loopId: string, limit = 20): LoopRun[] {
