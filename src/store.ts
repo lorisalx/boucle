@@ -355,9 +355,11 @@ function toLoop(row: RawLoop): Loop {
   return { ...row, enabled: row.enabled === 1 };
 }
 
+const RUNNER_NAMES: readonly RunnerName[] = ["vibe", "codex", "claude", "t3code"];
+
 function validatedRunner(value: RunnerName | null): RunnerName | null {
-  if (value === null || value === "vibe" || value === "codex" || value === "claude") return value;
-  throw new Error("runner must be one of: vibe, codex, claude, or null.");
+  if (value === null || RUNNER_NAMES.includes(value)) return value;
+  throw new Error(`runner must be one of: ${RUNNER_NAMES.join(", ")}, or null.`);
 }
 
 /** Default chief-of-staff heartbeat loop prompt, seeded (interpolated) on first boot. */
@@ -1070,6 +1072,20 @@ export class BoucleStore {
     this.db.exec(`PRAGMA user_version = ${BoucleStore.SCHEMA_VERSION}`);
   }
 
+  /**
+   * How many runs this loop has already sent into one agent session.
+   *
+   * A recurring loop that reuses its session forever grows the conversation without
+   * bound until the provider rejects the prompt outright — and because a dispatch
+   * still succeeds, the loop keeps reporting `ok` while doing nothing. The scheduler
+   * uses this to retire a session before it reaches that point.
+   */
+  countRunsForSession(loopId: string, sessionId: string): number {
+    return (this.db
+      .prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_id = ? AND session_id = ?`)
+      .get(loopId, sessionId) as { n: number }).n;
+  }
+
   createConversation(input: CreateConversationInput): ConversationRecord {
     const conversationId = `local-${randomUUID()}`;
     const createdAt = new Date().toISOString();
@@ -1685,6 +1701,7 @@ export class BoucleStore {
   getLoopCostSummary(warnThreshold = 10, stopThreshold = 30, windowDays = 30, reserveUnitUsd = 0): LoopCostSummary {
     // Vibe reports per-invocation cost, so loop, capture, and enrich rows are totaled here.
     // Conversations API responses do not expose billed cost; estimating browser chat,
+    // NOTE: see countRunsForSession below for the other unbounded-growth guard.
     // describe, or brief spend would invent numbers, so those calls are excluded.
     //
     // The cap is a rolling window, not a lifetime sum: an always-on instance can never wedge

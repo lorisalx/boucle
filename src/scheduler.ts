@@ -17,6 +17,13 @@ function budgetThreshold(name: string, fallback: number): number {
 
 const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
 const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
+
+/**
+ * Runs a loop may send into one agent session before it is retired for a fresh one.
+ * 20 keeps a few days of continuity for an hourly loop and a few weeks for a daily
+ * one, while staying far enough from a context window that no run is refused.
+ */
+const MAX_SESSION_RUNS = budgetThreshold("BOUCLE_LOOP_SESSION_MAX_RUNS", 20);
 // The budget is a rolling window (default ~monthly), so a long-lived instance frees up spend over
 // time instead of bricking on cumulative history.
 const BUDGET_WINDOW_DAYS = Math.max(1, Math.trunc(budgetThreshold("BOUCLE_AGENT_BUDGET_WINDOW_DAYS", 30)));
@@ -287,9 +294,28 @@ export class LoopScheduler {
       prompt: buildLoopTurnPrompt(loop, trigger),
       model: loop.model,
       title: loop.name,
-      resumeSessionId: loop.threadProject === runner.name ? loop.threadId : null,
+      resumeSessionId: this.resumableSessionFor(loop, runner),
       scope: `loops_${loop.loopId}`,
     });
+  }
+
+  /**
+   * The session to continue, or null to start a fresh one.
+   *
+   * A loop reuses its session so a recurring job reads as one conversation, but a
+   * session reused forever grows until the provider refuses the prompt. Worse, the
+   * dispatch still succeeds, so the loop reports `ok` while the agent never runs.
+   * Retiring the session after a bounded number of runs keeps the continuity that
+   * makes the thread readable without letting it grow past a context window.
+   */
+  private resumableSessionFor(loop: Loop, runner: AgentRunner): string | null {
+    if (loop.threadProject !== runner.name || !loop.threadId) return null;
+    const used = this.store.countRunsForSession(loop.loopId, loop.threadId);
+    if (used < MAX_SESSION_RUNS) return loop.threadId;
+    console.warn(
+      `[boucle] loop "${loop.name}": retiring ${runner.name} session after ${used} runs; starting a fresh one.`,
+    );
+    return null;
   }
 
   private runnerFor(override: RunnerName | null): AgentRunner {
