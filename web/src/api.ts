@@ -83,7 +83,7 @@ export interface Settings {
 }
 
 export type SettingSource = "meta" | "env" | "default";
-export type RunnerName = "vibe" | "codex" | "claude";
+export type RunnerName = "vibe" | "codex" | "claude" | "t3code";
 export type SettingsField =
   | "appName"
   | "ownerName"

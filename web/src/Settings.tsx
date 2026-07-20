@@ -237,12 +237,13 @@ export function Settings() {
                 value={runnerForm.runner}
                 onChange={(event) => setRunnerForm((value) => ({
                   ...value,
-                  runner: event.target.value as "vibe" | "codex" | "claude",
+                  runner: event.target.value as "vibe" | "codex" | "claude" | "t3code",
                 }))}
               >
                 <option value="vibe">Vibe</option>
                 <option value="codex">Codex</option>
                 <option value="claude">Claude</option>
+                <option value="t3code">t3code</option>
               </select>
             </Field>
             <Field label="t3code project" source={source("t3codeProject")}>

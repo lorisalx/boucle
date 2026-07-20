@@ -1017,15 +1017,25 @@ export class BoucleStore {
       this.db.exec(`UPDATE loop_runs SET runner = 'vibe' WHERE runner IS NULL`);
     }
     // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
+    //
+    // These fixups are unguarded and re-run on every boot, which suits the seeded demo but
+    // would fight a real install, so t3code loops are excluded from both:
+    //   - the model reset would stomp a deliberate model choice (a t3code loop names its
+    //     agent through `model`, e.g. claude-sonnet-5) on every restart;
+    //   - the thread reset would drop the loop's t3code thread every restart, so each run
+    //     would open a new chat instead of continuing the existing conversation.
     this.db.exec(`
       UPDATE loops SET model = 'devstral-2512'
       WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
+        AND COALESCE(runner, '') != 't3code'
         AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
       UPDATE loops SET interval_minutes = 60
       WHERE name = 'Meetings' AND interval_minutes < 60;
       UPDATE loops
       SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
-      WHERE thread_id IS NOT NULL AND COALESCE(thread_project, '') != 'vibe';
+      WHERE thread_id IS NOT NULL
+        AND COALESCE(thread_project, '') != 'vibe'
+        AND COALESCE(runner, '') != 't3code';
     `);
   }
 

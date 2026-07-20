@@ -2,7 +2,7 @@
 
 export type SettingSource = "meta" | "env" | "default";
 export type ProviderName = "mistral" | "openai";
-export type RunnerName = "vibe" | "codex" | "claude";
+export type RunnerName = "vibe" | "codex" | "claude" | "t3code";
 
 export interface SettingsStore {
   getMeta(key: string): string | null;
@@ -74,7 +74,7 @@ function stringSetting(store: SettingsStore | null, key: string, envName: string
 export function resolveRunnerSetting(store: SettingsStore | null): ResolvedSetting<RunnerName> {
   const raw = stringSetting(store, "runner", "BOUCLE_RUNNER", "vibe");
   const value = raw.value.toLowerCase();
-  if (value !== "vibe" && value !== "codex" && value !== "claude") {
+  if (value !== "vibe" && value !== "codex" && value !== "claude" && value !== "t3code") {
     throw new Error(`Unsupported BOUCLE_RUNNER: ${value || "(empty)"}.`);
   }
   return { value, source: raw.source };
