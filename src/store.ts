@@ -13,6 +13,11 @@ import { getIdentity, type Identity } from "./identity.ts";
 import { normalizeProjectId } from "./project-id.ts";
 import type { RunnerName } from "./settings.ts";
 
+/** Strip NUL bytes (U+0000) that break SQLite FTS5 indexing and corrupt stored JSON. */
+function stripNul(s: string): string {
+  return s.includes("\0") ? s.split("\0").join("") : s;
+}
+
 export type TicketStatus =
   | "inbox"
   | "triaged"
@@ -1261,8 +1266,8 @@ export class BoucleStore {
     const effort = input.effort ?? null;
     const ticket: Ticket = {
       ticketId: existing?.ticketId ?? randomUUID(),
-      title: input.title,
-      body: input.body ?? "",
+      title: stripNul(input.title),
+      body: stripNul(input.body ?? ""),
       status: existing?.status ?? "inbox",
       priority: existing?.priority ?? priority,
       kind: existing?.kind ?? input.kind ?? "task",
@@ -1279,7 +1284,7 @@ export class BoucleStore {
       effort: existing ? existing.effort : effort,
       dueAt: existing ? existing.dueAt : dueAt,
       snoozedUntil: existing?.snoozedUntil ?? null,
-      nextAction: input.nextAction ?? existing?.nextAction ?? null,
+      nextAction: input.nextAction != null ? stripNul(input.nextAction) : (existing?.nextAction ?? null),
       threadId: existing?.threadId ?? input.threadId ?? null,
       t3codeThreadId: existing?.t3codeThreadId ?? input.t3codeThreadId ?? null,
       t3codeOpenUrl: existing?.t3codeOpenUrl ?? input.t3codeOpenUrl ?? null,
@@ -1365,8 +1370,8 @@ export class BoucleStore {
     const iso = now.toISOString();
     const updated: Ticket = {
       ...prev,
-      title: input.title ?? prev.title,
-      body: input.body ?? prev.body,
+      title: input.title !== undefined ? stripNul(input.title) : prev.title,
+      body: input.body !== undefined ? stripNul(input.body) : prev.body,
       priority: input.priority ?? prev.priority,
       kind: input.kind ?? prev.kind,
       bucket: input.bucket !== undefined ? input.bucket : prev.bucket,
@@ -1374,7 +1379,7 @@ export class BoucleStore {
       needs: input.needs ?? prev.needs,
       effort: input.effort !== undefined ? input.effort : prev.effort,
       dueAt: input.dueAt !== undefined ? input.dueAt : prev.dueAt,
-      nextAction: input.nextAction !== undefined ? input.nextAction : prev.nextAction,
+      nextAction: input.nextAction !== undefined ? (input.nextAction !== null ? stripNul(input.nextAction) : null) : prev.nextAction,
       threadId: input.threadId !== undefined ? input.threadId : prev.threadId,
       t3codeThreadId: input.t3codeThreadId !== undefined ? input.t3codeThreadId : prev.t3codeThreadId,
       t3codeOpenUrl: input.t3codeOpenUrl !== undefined ? input.t3codeOpenUrl : prev.t3codeOpenUrl,
