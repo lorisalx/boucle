@@ -199,7 +199,11 @@ export function useExtensions(): Extension[] {
     extensionsPromise ??= api
       .extensions()
       .then((list) => (extensionsCache = list))
-      .catch(() => []);
+      .catch(() => {
+        // Don't cache a failed fetch — clear the promise so the next mount retries.
+        extensionsPromise = null;
+        return [];
+      });
     void extensionsPromise.then((list) => {
       if (alive) setExtensions(list);
     });

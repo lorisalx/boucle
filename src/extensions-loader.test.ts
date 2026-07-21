@@ -6,7 +6,7 @@ import { test } from "node:test";
 
 import { Hono } from "hono";
 
-import { emit } from "./extensions/events.ts";
+import { emit, on } from "./extensions/events.ts";
 import { loadExtensions, viewExtensionSettings } from "./extensions/loader.ts";
 import { isKnownProviderName, isKnownRunnerName } from "./selectors.ts";
 import { BoucleStore } from "./store.ts";
@@ -197,6 +197,67 @@ test("kv writes are namespaced under ext.<name>.kv.", async () => {
   await loadExtensions({ store, dirs: [base] });
   assert.equal(store.getMeta(`ext.${name}.kv.token`), "abc");
   assert.equal(store.getMeta("token"), null, "not written to the bare key");
+});
+
+test("a secret setting's stored value is never returned to the settings view", async () => {
+  const base = tmpBase();
+  const name = uniqueName("hush");
+  writeExt(
+    base,
+    name,
+    `  settings: [{ key: "token", secret: true }, { key: "topic" }],
+  setup(ctx) {
+    ctx.registerTool({ name: "token", title: "Token", description: "test", schema: {}, readOnly: true, handler: () => ctx.settings.get("token") });
+  },`,
+  );
+  const store = newStore(base);
+  const loaded = await loadExtensions({ store, dirs: [base] });
+  const ext = loaded.find((e) => e.name === name);
+  assert.ok(ext);
+
+  store.setMeta(`ext.${name}.token`, "s3cret");
+  store.setMeta(`ext.${name}.topic`, "visible");
+  const [token, topic] = viewExtensionSettings(store, ext);
+  assert.deepEqual({ value: token?.value, source: token?.source, secret: token?.secret }, { value: "", source: "meta", secret: true });
+  assert.deepEqual({ value: topic?.value, source: topic?.source }, { value: "visible", source: "meta" });
+
+  // The extension itself still reads the real value.
+  const tool = listTools().find((candidate) => candidate.name === `${toolPrefix(name)}_token`);
+  assert.ok(tool);
+  assert.equal(await tool.handler({ store }, {}), "s3cret");
+});
+
+test("registering a second page fails the extension", async () => {
+  const base = tmpBase();
+  const name = uniqueName("twopages");
+  writeExt(
+    base,
+    name,
+    `  setup(ctx) {
+    ctx.registerPage({ label: "One" });
+    ctx.registerPage({ label: "Two" });
+  },`,
+  );
+  writePage(base, name);
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  assert.equal(loaded[0]?.status, "error");
+  assert.match(loaded[0]?.error ?? "", /one page per extension/);
+});
+
+test("a stale double-unsubscribe does not remove later handlers", async () => {
+  const unsubStale = on("server.started", () => {});
+  unsubStale();
+
+  let calls = 0;
+  const unsubLive = on("server.started", () => {
+    calls++;
+  });
+  unsubStale(); // stale second call must not clobber the live handler
+
+  emit("server.started", { port: 0 });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  unsubLive();
 });
 
 test("declared settings report their source without exposing environment values", async () => {

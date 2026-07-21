@@ -23,6 +23,8 @@ export interface ExtensionSettingSpec {
   label?: string;
   env?: string;
   placeholder?: string;
+  /** Mark credentials: the stored value is never returned to the web UI (shown as configured/unset). */
+  secret?: boolean;
 }
 
 /** A tool an extension contributes. Its name is auto-prefixed `<ext>_` in the shared registry. */
@@ -51,7 +53,7 @@ export interface ExtensionContext {
   /** Mount an HTTP handler under `/api/ext/<name>/<path>`. */
   registerRoute(method: ExtensionHttpMethod, path: string, handler: Handler): void;
 
-  /** Add a nav item + page; assets are served from `<extension dir>/web/` at `/ext/<name>/`. */
+  /** Add the nav item + page (one per extension); assets are served from `<extension dir>/web/` at `/ext/<name>/`. */
   registerPage(def: ExtensionPageDef): void;
 
   /** Contribute an agent runner selectable via the `runner` setting. */

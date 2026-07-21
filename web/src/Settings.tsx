@@ -88,6 +88,23 @@ function ExtensionRow({ ext, values }: { ext: Extension; values: ExtensionSettin
     }
   };
 
+  const clear = async (key: string) => {
+    setBusy("save");
+    setError(null);
+    setSaved(false);
+    try {
+      await api.updateSettings({ extensions: { [ext.name]: { [key]: null } } });
+      await refreshIdentity();
+      setForm((v) => ({ ...v, [key]: "" }));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="rounded-md border border-border px-3 py-3">
       <div className="flex items-start justify-between gap-3">
@@ -110,14 +127,20 @@ function ExtensionRow({ ext, values }: { ext: Extension; values: ExtensionSettin
             <label key={field.key} className="flex flex-col gap-1.5">
               <span className="flex items-baseline justify-between gap-3 text-xs font-medium text-muted">
                 {field.label ?? field.key}
-                <span className="text-[11px] text-dim">
+                <span className="flex items-baseline gap-2 text-[11px] text-dim">
                   {field.source === "meta" ? "Set here" : field.source === "env" ? "From .env" : "Unset"}
+                  {field.secret && field.source === "meta" ? (
+                    <button type="button" className="text-dim underline hover:text-fg" onClick={() => void clear(field.key)}>
+                      Clear
+                    </button>
+                  ) : null}
                 </span>
               </span>
               <input
                 className={INPUT}
+                type={field.secret ? "password" : "text"}
                 value={form[field.key] ?? ""}
-                placeholder={field.placeholder}
+                placeholder={field.secret && field.source === "meta" ? "Configured; leave blank to keep" : field.placeholder}
                 onChange={(e) => setForm((v) => ({ ...v, [field.key]: e.target.value }))}
               />
             </label>

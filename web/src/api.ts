@@ -117,6 +117,7 @@ export interface ExtensionSettingView {
   key: string;
   label?: string;
   placeholder?: string;
+  secret?: boolean;
   value: string;
   source: "meta" | "env" | "unset";
 }

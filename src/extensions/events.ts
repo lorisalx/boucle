@@ -38,6 +38,8 @@ export function on<K extends EventName>(event: K, handler: EventHandler<K>): () 
   eventHandlers.add(handler);
   return () => {
     eventHandlers.delete(handler);
-    if (eventHandlers.size === 0) handlers.delete(event);
+    // Only drop the map entry if it still holds OUR set — a later on() may have replaced
+    // it, and a stale double-unsubscribe must not delete live handlers.
+    if (eventHandlers.size === 0 && handlers.get(event) === eventHandlers) handlers.delete(event);
   };
 }

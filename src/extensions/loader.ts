@@ -118,6 +118,9 @@ function validateSettingSpecs(settings: unknown): asserts settings is ExtensionS
         throw new Error(`extension setting ${spec.key}.${field} must be a string`);
       }
     }
+    if (spec.secret !== undefined && typeof spec.secret !== "boolean") {
+      throw new Error(`extension setting ${spec.key}.secret must be a boolean`);
+    }
   }
 }
 
@@ -187,6 +190,9 @@ function buildContext(
         throw new Error("extension page label must be a non-empty string");
       }
       if (def.icon !== undefined && typeof def.icon !== "string") throw new Error("extension page icon must be a string");
+      // One page per extension: every page maps to the same /ext/<name>/ URL, so a second
+      // registration could only shadow the first.
+      if (pending.pages.length > 0) throw new Error("extension already registered a page (one page per extension)");
       pending.pages.push(def);
     },
     registerRunner(runner) {
@@ -286,6 +292,9 @@ export async function loadExtensions(deps: LoaderDeps): Promise<LoadedExtension[
 
     let manifest: ExtensionManifest;
     try {
+      // NOTE: this import runs the module's top-level code even for a disabled extension —
+      // the manifest is needed to list it in Settings. "Disabled" only means setup() never runs;
+      // removing the directory is the only way to keep an extension's code from executing.
       const mod = (await import(pathToFileURL(candidate.indexFile).href)) as { default?: unknown };
       manifest = validateManifest(mod.default);
       if (manifest.name !== candidate.name) {
@@ -326,6 +335,8 @@ export async function loadExtensions(deps: LoaderDeps): Promise<LoadedExtension[
       }
       const rollback = commitRegistrations(pending.registrations);
       try {
+        // Known limitation: Hono has no unmount, so if mount() throws partway the routes it
+        // already added stay live even though the registries are rolled back below.
         if (deps.app) mount(deps.app, candidate, pending.routes, pending.pages.length > 0);
       } catch (error) {
         rollback();
@@ -372,14 +383,16 @@ export interface ExtensionSettingView {
   key: string;
   label?: string;
   placeholder?: string;
+  secret?: boolean;
   value: string;
   source: "meta" | "env" | "unset";
 }
 
+/** Secret values are never returned — like env values, they report only their source. */
 export function viewExtensionSettings(store: BoucleStore, ext: LoadedExtension): ExtensionSettingView[] {
   return ext.settings.map((spec) => {
     const meta = store.getMeta(metaKey(ext.name, spec.key));
-    if (meta !== null) return field(spec, meta, "meta");
+    if (meta !== null) return field(spec, spec.secret ? "" : meta, "meta");
     if (spec.env) {
       const env = (process.env[spec.env] ?? "").trim();
       if (env.length > 0) return field(spec, "", "env");
@@ -392,6 +405,7 @@ function field(spec: ExtensionSettingSpec, value: string, source: "meta" | "env"
   const view: ExtensionSettingView = { key: spec.key, value, source };
   if (spec.label !== undefined) view.label = spec.label;
   if (spec.placeholder !== undefined) view.placeholder = spec.placeholder;
+  if (spec.secret) view.secret = true;
   return view;
 }
 

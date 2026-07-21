@@ -19,7 +19,7 @@ export default definePlugin({
   version: "0.1.0",
   description: "Turn an inbound webhook into a Boucle ticket.",
   settings: [
-    { key: "secret", label: "Shared secret", env: "BOUCLE_WEBHOOK_SECRET", placeholder: "optional x-boucle-secret header" },
+    { key: "secret", label: "Shared secret", env: "BOUCLE_WEBHOOK_SECRET", placeholder: "optional x-boucle-secret header", secret: true },
   ],
   setup(ctx) {
     ctx.registerRoute("post", "/hook", async (c: Context) => {
