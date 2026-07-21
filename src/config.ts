@@ -34,6 +34,16 @@ export function resolveDbPath(explicit?: string | undefined): string {
 
 export const BOUCLE_PORT = Number.parseInt(process.env.BOUCLE_PORT ?? "4419", 10);
 
+/**
+ * Extension search dirs, in load order: bundled examples (ship enabled), then the
+ * user dir ($BOUCLE_EXTENSIONS_DIR, default $XDG_DATA_HOME/boucle/extensions).
+ */
+export function resolveExtensionDirs(): string[] {
+  const bundled = join(REPO_ROOT, "extensions");
+  const external = (process.env.BOUCLE_EXTENSIONS_DIR ?? "").trim();
+  return [bundled, external.length > 0 ? external : join(defaultDbDir(), "extensions")];
+}
+
 /** The brain root — `$BOUCLE_BRAIN_DIR ?? <repo>/fake-brain` (the bundled demo dataset). */
 export function resolveBrainDir(): string {
   const base = (process.env.BOUCLE_BRAIN_DIR ?? "").trim();

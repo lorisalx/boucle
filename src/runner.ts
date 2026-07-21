@@ -2,6 +2,7 @@
 
 import { ClaudeRunner } from "./claude.ts";
 import { CodexRunner } from "./codex.ts";
+import { registerRunnerName } from "./selectors.ts";
 import { resolveRunnerSetting, type RunnerName, type SettingsStore } from "./settings.ts";
 import { execVibe } from "./vibe.ts";
 import { readVibeTranscript } from "./vibe-transcript.ts";
@@ -75,12 +76,34 @@ export class VibeRunner implements AgentRunner {
   }
 }
 
-const runners: Record<RunnerName, AgentRunner> = {
-  vibe: new VibeRunner(),
-  codex: new CodexRunner(),
-  claude: new ClaudeRunner(),
-};
+const DEFAULT_RUNNER = "vibe";
+
+const runners = new Map<string, AgentRunner>([
+  ["vibe", new VibeRunner()],
+  ["codex", new CodexRunner()],
+  ["claude", new ClaudeRunner()],
+]);
+
+const warnedMissing = new Set<string>();
+
+/** Extensions add runners to the live registry (also registers the name for settings validation). */
+export function registerRunner(runner: AgentRunner): void {
+  if (runners.has(runner.name)) {
+    throw new Error(`runner already registered: ${runner.name}`);
+  }
+  runners.set(runner.name, runner);
+  registerRunnerName(runner.name);
+}
 
 export function getAgentRunner(override: RunnerName | null = null, store: SettingsStore | null = null): AgentRunner {
-  return runners[override ?? resolveRunnerSetting(store).value];
+  const wanted = override ?? resolveRunnerSetting(store).value;
+  const runner = runners.get(wanted);
+  if (runner) return runner;
+  // A meta-configured runner from a since-removed extension degrades to the default
+  // rather than crashing — warn once so the misconfiguration is visible.
+  if (!warnedMissing.has(wanted)) {
+    warnedMissing.add(wanted);
+    console.error(`[boucle] unknown runner "${wanted}"; falling back to ${DEFAULT_RUNNER}.`);
+  }
+  return runners.get(DEFAULT_RUNNER)!;
 }

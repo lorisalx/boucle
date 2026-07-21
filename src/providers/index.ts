@@ -2,11 +2,51 @@
 
 import { createMistralProvider, LEGACY_EMBED_MODEL } from "./mistral.ts";
 import { createOpenAIProvider } from "./openai.ts";
-import type { OpenAICompatibleProvider } from "./openai-compat.ts";
 import type { Provider } from "./types.ts";
+import { registerProviderName } from "../selectors.ts";
 import { resolveSettings, validateResolvedSettings, type SettingsStore } from "../settings.ts";
 
-let selected: OpenAICompatibleProvider | null = null;
+/** A provider factory resolves its own models/keys from the store (via resolveSettings). */
+export type ProviderFactory = (store: SettingsStore | null) => Provider;
+
+const DEFAULT_PROVIDER = "mistral";
+
+const factories = new Map<string, ProviderFactory>([
+  [
+    "mistral",
+    (store) => {
+      const settings = resolveSettings(store, false);
+      return createMistralProvider({
+        chat: settings.chatModel.value,
+        embed: settings.embedModel.value,
+        transcribe: settings.transcribeModel.value,
+      });
+    },
+  ],
+  [
+    "openai",
+    (store) => {
+      const settings = resolveSettings(store, false);
+      return createOpenAIProvider({
+        chatModel: settings.chatModel.value,
+        embedModel: settings.embedModel.value,
+        transcribeModel: settings.transcribeModel.value,
+        baseUrl: settings.openaiBaseUrl.value,
+      });
+    },
+  ],
+]);
+
+const warnedMissing = new Set<string>();
+
+/** Extensions add providers to the live registry (also registers the name for settings validation). */
+export function registerProvider(name: string, factory: ProviderFactory): void {
+  if (factories.has(name)) throw new Error(`provider already registered: ${name}`);
+  factories.set(name, factory);
+  registerProviderName(name);
+}
+
+let selected: Provider | null = null;
 let settingsStore: SettingsStore | null = null;
 
 export function getProvider(store?: SettingsStore): Provider {
@@ -17,20 +57,15 @@ export function getProvider(store?: SettingsStore): Provider {
   if (selected) return selected;
   const settings = resolveSettings(settingsStore, false);
   validateResolvedSettings(settings);
-  if (settings.provider.value === "mistral") {
-    selected = createMistralProvider({
-      chat: settings.chatModel.value,
-      embed: settings.embedModel.value,
-      transcribe: settings.transcribeModel.value,
-    });
-  } else {
-    selected = createOpenAIProvider({
-      chatModel: settings.chatModel.value,
-      embedModel: settings.embedModel.value,
-      transcribeModel: settings.transcribeModel.value,
-      baseUrl: settings.openaiBaseUrl.value,
-    });
+  let factory = factories.get(settings.provider.value);
+  if (!factory) {
+    if (!warnedMissing.has(settings.provider.value)) {
+      warnedMissing.add(settings.provider.value);
+      console.error(`[boucle] unknown provider "${settings.provider.value}"; falling back to ${DEFAULT_PROVIDER}.`);
+    }
+    factory = factories.get(DEFAULT_PROVIDER)!;
   }
+  selected = factory(settingsStore);
   return selected;
 }
 
@@ -39,8 +74,10 @@ export function invalidateProvider(): void {
 }
 
 export function getEmbeddingModel(): string | null {
-  getProvider();
-  return selected?.embedModel ?? null;
+  const provider = getProvider();
+  // Only the OpenAI-compatible providers expose a concrete embed model name.
+  const embedModel = (provider as { embedModel?: string | null }).embedModel;
+  return embedModel ?? null;
 }
 
 export function getLegacyEmbeddingModel(): string {

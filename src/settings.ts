@@ -1,8 +1,12 @@
 // Shared meta -> environment -> default resolution for UI-configurable settings.
 
+import { isKnownProviderName, isKnownRunnerName, knownProviderNames, knownRunnerNames } from "./selectors.ts";
+
 export type SettingSource = "meta" | "env" | "default";
-export type ProviderName = "mistral" | "openai";
-export type RunnerName = "vibe" | "codex" | "claude";
+// Widened to string in the extension phase: providers and runners can be contributed
+// by extensions, so the valid set is the live registry (selectors.ts), not a literal union.
+export type ProviderName = string;
+export type RunnerName = string;
 
 export interface SettingsStore {
   getMeta(key: string): string | null;
@@ -72,12 +76,11 @@ function stringSetting(store: SettingsStore | null, key: string, envName: string
 }
 
 export function resolveRunnerSetting(store: SettingsStore | null): ResolvedSetting<RunnerName> {
+  // Normalize only — membership is validated against the live registry at the point of
+  // use (getAgentRunner degrades a since-removed extension runner to the default rather
+  // than crashing the boot). An empty meta value falls back to the default.
   const raw = stringSetting(store, "runner", "BOUCLE_RUNNER", "vibe");
-  const value = raw.value.toLowerCase();
-  if (value !== "vibe" && value !== "codex" && value !== "claude") {
-    throw new Error(`Unsupported BOUCLE_RUNNER: ${value || "(empty)"}.`);
-  }
-  return { value, source: raw.source };
+  return { value: raw.value.toLowerCase() || "vibe", source: raw.source };
 }
 
 export function resolveIdentitySettings(store: SettingsStore | null, demoMode: boolean): ResolvedIdentitySettings {
@@ -101,11 +104,11 @@ export function resolveT3CodeSettings(store: SettingsStore | null): ResolvedT3Co
 export function resolveSettings(store: SettingsStore | null, demoMode: boolean): ResolvedSettings {
   const identity = resolveIdentitySettings(store, demoMode);
   const rawProvider = stringSetting(store, "provider", "BOUCLE_PROVIDER", "mistral");
-  const providerValue = rawProvider.value.toLowerCase();
-  if (providerValue !== "mistral" && providerValue !== "openai") {
-    throw new Error(`Unsupported BOUCLE_PROVIDER: ${providerValue || "(empty)"}.`);
-  }
-  const provider: ResolvedSetting<ProviderName> = { value: providerValue, source: rawProvider.source };
+  // Normalize only; getProvider degrades an unknown/removed provider to the default.
+  const provider: ResolvedSetting<ProviderName> = {
+    value: rawProvider.value.toLowerCase() || "mistral",
+    source: rawProvider.source,
+  };
   const runner = resolveRunnerSetting(store);
   const mistral = provider.value === "mistral";
   return {
@@ -147,11 +150,13 @@ export function parseSettingsUpdate(value: unknown): SettingsUpdate {
   }
   if (typeof update.provider === "string") update.provider = update.provider.toLowerCase();
   if (typeof update.runner === "string") update.runner = update.runner.toLowerCase();
-  if (update.provider !== undefined && update.provider !== null && update.provider !== "mistral" && update.provider !== "openai") {
-    throw new Error("provider must be one of: mistral, openai.");
+  // Validate against the live registries so extension-contributed providers/runners are
+  // accepted, while typos are still rejected with the current set of valid names.
+  if (typeof update.provider === "string" && !isKnownProviderName(update.provider)) {
+    throw new Error(`provider must be one of: ${knownProviderNames().join(", ")}.`);
   }
-  if (update.runner !== undefined && update.runner !== null && update.runner !== "vibe" && update.runner !== "codex" && update.runner !== "claude") {
-    throw new Error("runner must be one of: vibe, codex, claude.");
+  if (typeof update.runner === "string" && !isKnownRunnerName(update.runner)) {
+    throw new Error(`runner must be one of: ${knownRunnerNames().join(", ")}.`);
   }
   return update;
 }

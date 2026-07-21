@@ -1,8 +1,16 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { api, type SettingSource, type Settings, type SettingsField, type SettingsUpdate } from "./api.ts";
-import { refreshIdentity, useIdentity } from "./hooks.ts";
-import { Button, Status } from "./ui.tsx";
+import {
+  api,
+  type Extension,
+  type ExtensionSettingView,
+  type SettingSource,
+  type Settings,
+  type SettingsField,
+  type SettingsUpdate,
+} from "./api.ts";
+import { refreshIdentity, useExtensions, useIdentity } from "./hooks.ts";
+import { Button, Status, Tag, type Tone } from "./ui.tsx";
 
 const INPUT =
   "rounded-md border border-border bg-transparent px-3 py-2 text-sm text-fg outline-none " +
@@ -32,6 +40,121 @@ function Card({ title, description, children }: { title: string; description: st
       <p className="mt-1 text-xs text-muted">{description}</p>
       <div className="mt-4">{children}</div>
     </section>
+  );
+}
+
+function statusTone(status: Extension["status"]): Tone {
+  return status === "active" ? "success" : status === "error" ? "danger" : "neutral";
+}
+
+/** One extension: status pill, enable/disable, and its declared settings (saved per card). */
+function ExtensionRow({ ext, values }: { ext: Extension; values: ExtensionSettingView[] }) {
+  const [form, setForm] = useState<Record<string, string>>(() => Object.fromEntries(values.map((v) => [v.key, v.value])));
+  const [busy, setBusy] = useState<"toggle" | "save" | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [restart, setRestart] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const enabled = ext.status !== "disabled";
+
+  const toggle = async () => {
+    setBusy("toggle");
+    setError(null);
+    try {
+      await api.toggleExtension(ext.name);
+      setRestart(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const save = async () => {
+    setBusy("save");
+    setError(null);
+    setSaved(false);
+    try {
+      const update: Record<string, string | null> = {};
+      for (const v of values) if ((form[v.key] ?? "") !== v.value) update[v.key] = form[v.key] ?? "";
+      await api.updateSettings({ extensions: { [ext.name]: update } });
+      await refreshIdentity();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-border px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-fg">{ext.name}</span>
+            <span className="text-[11px] text-dim">v{ext.version}</span>
+            <Tag tone={statusTone(ext.status)}>{ext.status}</Tag>
+          </div>
+          {ext.description ? <p className="mt-0.5 text-xs text-muted">{ext.description}</p> : null}
+          {ext.status === "error" && ext.error ? <p className="mt-1 text-[11px] text-danger">{ext.error}</p> : null}
+        </div>
+        <Button variant="outline" disabled={busy !== null} onClick={toggle}>
+          {enabled ? "Disable" : "Enable"}
+        </Button>
+      </div>
+      {values.length > 0 ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {values.map((field) => (
+            <label key={field.key} className="flex flex-col gap-1.5">
+              <span className="flex items-baseline justify-between gap-3 text-xs font-medium text-muted">
+                {field.label ?? field.key}
+                <span className="text-[11px] text-dim">
+                  {field.source === "meta" ? "Set here" : field.source === "env" ? "From .env" : "Unset"}
+                </span>
+              </span>
+              <input
+                className={INPUT}
+                value={form[field.key] ?? ""}
+                placeholder={field.placeholder}
+                onChange={(e) => setForm((v) => ({ ...v, [field.key]: e.target.value }))}
+              />
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {values.length > 0 ? (
+          <Button disabled={busy !== null} onClick={save}>
+            {busy === "save" ? "Saving…" : "Save settings"}
+          </Button>
+        ) : null}
+        {saved ? <span className="text-xs text-success">Saved.</span> : null}
+        {restart ? <span className="text-xs text-warn">Toggled — restart Boucle to apply.</span> : null}
+        {error ? <span role="alert" className="text-xs text-danger">{error}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function ExtensionsCard({ settings }: { settings: Settings }) {
+  const extensions = useExtensions();
+  const valuesFor = (name: string) => settings.extensions.find((e) => e.name === name)?.fields ?? [];
+  return (
+    <Card
+      title="Extensions"
+      description="Local plugins that add tools, routes, pages, runners, or providers. Enabling/disabling takes effect on restart."
+    >
+      {extensions.length === 0 ? (
+        <p className="text-xs text-dim">No extensions installed. Drop one in your extensions directory and restart.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {extensions.map((ext) => (
+            <ExtensionRow key={ext.name} ext={ext} values={valuesFor(ext.name)} />
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -288,6 +411,8 @@ export function Settings() {
           </div>
           {runnerError ? <p role="alert" className="mt-3 text-xs text-danger">{runnerError}</p> : null}
         </Card>
+
+        <ExtensionsCard settings={settings} />
 
         <div className="border-t border-border pt-6">
           <h2 className="mb-1 text-sm font-medium text-fg">MCP tools for agent CLIs</h2>

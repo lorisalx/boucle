@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { api, type Loop, type Meeting, type ProjectSummary, type Settings, type Ticket } from "./api.ts";
+import { api, type Extension, type Loop, type Meeting, type ProjectSummary, type Settings, type Ticket } from "./api.ts";
 
 const IDENTITY_FALLBACK: Settings = {
   appName: "Boucle",
@@ -36,6 +36,7 @@ const IDENTITY_FALLBACK: Settings = {
     t3codeToken: "default",
     t3codeProject: "default",
   },
+  extensions: [],
 };
 
 let identityCache: Settings | null = null;
@@ -179,6 +180,32 @@ export function useProjects(): {
   }, [refresh]);
 
   return { projects, status, refresh };
+}
+
+let extensionsCache: Extension[] | null = null;
+let extensionsPromise: Promise<Extension[]> | null = null;
+
+/** Load the extension list once (cached for the app's lifetime); drives the nav + Settings card. */
+export function useExtensions(): Extension[] {
+  const [extensions, setExtensions] = useState<Extension[]>(extensionsCache ?? []);
+  useEffect(() => {
+    if (extensionsCache) {
+      setExtensions(extensionsCache);
+      return;
+    }
+    let alive = true;
+    extensionsPromise ??= api
+      .extensions()
+      .then((list) => (extensionsCache = list))
+      .catch(() => []);
+    void extensionsPromise.then((list) => {
+      if (alive) setExtensions(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return extensions;
 }
 
 export type Theme = "light" | "dark";

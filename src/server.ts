@@ -15,6 +15,13 @@ import { Hono } from "hono";
 
 import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { emit } from "./extensions/events.ts";
+import {
+  loadExtensions,
+  toggleExtension,
+  viewExtensionSettings,
+  writeExtensionSetting,
+} from "./extensions/loader.ts";
+import type { LoadedExtension } from "./extensions/types.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
 import {
   BoucleStore,
@@ -71,16 +78,12 @@ import {
 } from "./settings.ts";
 
 let provider: Provider;
+// Populated once extensions have loaded (they may contribute providers/runners the boot
+// check then validates). Declared up top so the settings responses can read it.
+let extensions: LoadedExtension[] = [];
 const dbPath = resolveDbPath();
 const store = new BoucleStore(dbPath);
 getIdentity(store);
-try {
-  provider = getProvider(store);
-  getAgentRunner(null, store);
-} catch (error) {
-  process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
-  process.exit(1);
-}
 
 const search = new BrainSearch(dbPath, store);
 initBrainGraph(store, search);
@@ -420,7 +423,32 @@ function settingsResponse() {
     mistralApiKeyPresent: (process.env.MISTRAL_API_KEY ?? "").trim().length > 0,
     openaiApiKeyPresent: (process.env.OPENAI_API_KEY ?? "").trim().length > 0,
     sources,
+    extensions: extensions.map((ext) => ({ name: ext.name, fields: viewExtensionSettings(store, ext) })),
   };
+}
+
+/** Persist per-extension settings from a PUT body, validated against declared keys only. */
+function applyExtensionSettings(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("extensions must be an object");
+  }
+  const changed: string[] = [];
+  for (const [name, fields] of Object.entries(value)) {
+    const ext = extensions.find((e) => e.name === name);
+    if (!ext) throw new Error(`Unknown extension: ${name}.`);
+    if (typeof fields !== "object" || fields === null || Array.isArray(fields)) {
+      throw new Error(`${name} settings must be an object.`);
+    }
+    const declared = new Set(ext.settings.map((s) => s.key));
+    for (const [key, fieldValue] of Object.entries(fields)) {
+      if (!declared.has(key)) throw new Error(`Unknown setting ${key} for extension ${name}.`);
+      if (fieldValue !== null && typeof fieldValue !== "string") throw new Error(`${name}.${key} must be a string.`);
+      writeExtensionSetting(store, name, key, fieldValue ?? "");
+      changed.push(`ext.${name}.${key}`);
+    }
+  }
+  return changed;
 }
 
 app.get("/api/settings", (c) => c.json(settingsResponse()));
@@ -429,7 +457,16 @@ app.put("/api/settings", async (c) => {
   try {
     const demoMode = getIdentity().demoMode;
     const current = resolveSettings(store, demoMode);
-    const update = parseSettingsUpdate(await c.req.json().catch(() => null));
+    const raw = await c.req.json().catch(() => null);
+    // The namespaced extensions section is validated + persisted separately from core settings.
+    let extUpdate: unknown;
+    let core = raw;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      extUpdate = (raw as Record<string, unknown>).extensions;
+      core = { ...(raw as Record<string, unknown>) };
+      delete (core as Record<string, unknown>).extensions;
+    }
+    const update = parseSettingsUpdate(core);
     const requested = settingsWithUpdate(store, update, demoMode);
     if (requested.provider.value !== current.provider.value) {
       for (const key of ["chatModel", "embedModel", "transcribeModel"] as const) {
@@ -438,13 +475,14 @@ app.put("/api/settings", async (c) => {
     }
     const candidate = settingsWithUpdate(store, update, demoMode);
     validateResolvedSettings(candidate);
+    const extChanged = applyExtensionSettings(extUpdate);
     store.setMetaValues(Object.entries(update));
     invalidateIdentity();
     invalidateProvider();
     getIdentity(store);
     provider = getProvider(store);
     search.reconfigureProvider();
-    emit("settings.changed", { keys: Object.keys(update) });
+    emit("settings.changed", { keys: [...Object.keys(update), ...extChanged] });
     return c.json(settingsResponse());
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
@@ -811,6 +849,33 @@ app.get("/api/mcp-info", (c) => {
   const url = `http://127.0.0.1:${BOUCLE_PORT}/mcp`;
   const displayDbPath = dbPath.replace(process.env.HOME ?? " ", "$HOME");
   return c.json({ url, token, configToml: mcpConfigToml({ url, token, cliPath: "src/cli.ts", dbPath: displayDbPath }) });
+});
+
+// Extensions load last: they add tools/routes/pages/runners/providers onto `app` before
+// the provider/runner boot check validates the selected names — and before the SPA
+// catch-all below, so their /api/ext/* and /ext/* routes win. A broken extension is
+// isolated (status "error") and never blocks the boot.
+extensions = await loadExtensions({ store, search, app });
+for (const ext of extensions) {
+  if (ext.status === "error") process.stderr.write(`[boucle] extension "${ext.name}" failed to load: ${ext.error}\n`);
+  else process.stdout.write(`[boucle] extension "${ext.name}" ${ext.status}\n`);
+}
+try {
+  provider = getProvider(store);
+  getAgentRunner(null, store);
+} catch (error) {
+  process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+
+// Omit `dir` (an absolute path) so the UI never leaks the machine's folder layout.
+app.get("/api/extensions", (c) => c.json(extensions.map(({ dir: _dir, ...pub }) => pub)));
+app.post("/api/extensions/:name/toggle", (c) => {
+  const name = c.req.param("name");
+  if (!extensions.some((e) => e.name === name)) return c.json({ error: "unknown extension" }, 404);
+  const enabled = toggleExtension(store, name);
+  // Honest: registration happens at boot, so a toggle only takes effect on restart.
+  return c.json({ restartRequired: true, enabled });
 });
 
 // Static web (built by Vite into ./web/dist), with SPA fallback.

@@ -140,6 +140,20 @@ if (group === "ticket" && action === "upsert") {
 } else if (group === "reprioritize") {
   const updated = store.reprioritize();
   out(json, { updated }, `Reprioritized ${updated} ticket(s).`);
+} else if (group === "ext" && action === "list") {
+  const { loadExtensions } = await import("./extensions/loader.ts");
+  const extensions = await loadExtensions({ store, dryRun: true });
+  if (json) {
+    out(true, extensions.map(({ dir: _dir, ...pub }) => pub), "");
+  } else if (extensions.length === 0) {
+    out(false, null, "(no extensions)");
+  } else {
+    const lines = extensions.map((e) => {
+      const suffix = e.status === "error" ? ` — ${e.error}` : e.description ? ` — ${e.description}` : "";
+      return `${e.status.padEnd(8)} ${e.name}@${e.version}${suffix}`;
+    });
+    out(false, null, lines.join("\n"));
+  }
 } else if (group === "mcp") {
   // Serve BOUCLE's tools over stdio (for codex/claude `mcp_servers` command/args).
   const { createBoucleMcpServer } = await import("./mcp.ts");
@@ -165,6 +179,6 @@ if (group === "ticket" && action === "upsert") {
   }));
 } else {
   fail(
-    "usage: boucle <ticket upsert|list|get|transition|set | next | source-seen | reprioritize | mcp | mcp-config> [flags]",
+    "usage: boucle <ticket upsert|list|get|transition|set | next | source-seen | reprioritize | ext list | mcp | mcp-config> [flags]",
   );
 }

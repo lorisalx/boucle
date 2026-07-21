@@ -1,32 +1,70 @@
 import {
+  ActivityIcon,
+  BellIcon,
+  BoxIcon,
   BrainIcon,
   CalendarIcon,
   LayoutGridIcon,
   ListIcon,
+  type LucideIcon,
   NetworkIcon,
+  PlugIcon,
   PlusIcon,
+  PuzzleIcon,
   RepeatIcon,
   SettingsIcon,
+  WebhookIcon,
+  ZapIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { openCapture } from "./Capture.tsx";
-import { navigate, useHashRoute, useIdentity } from "./hooks.ts";
+import { navigate, useExtensions, useHashRoute, useIdentity } from "./hooks.ts";
+import type { Extension } from "./api.ts";
 import { Mark, ThemeToggle, cx } from "./ui.tsx";
 
-const NAV = [
+interface NavItem {
+  hash: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const CORE_NAV: NavItem[] = [
   { hash: "#/", label: "Queue", icon: ListIcon },
   { hash: "#/brain", label: "Brain", icon: BrainIcon },
   { hash: "#/graph", label: "Graph", icon: NetworkIcon },
   { hash: "#/projects", label: "Projects", icon: LayoutGridIcon },
   { hash: "#/meetings", label: "Meetings", icon: CalendarIcon },
   { hash: "#/loops", label: "Loops", icon: RepeatIcon },
-  { hash: "#/settings", label: "Settings", icon: SettingsIcon },
-] as const;
+];
 
-function activeHash(hash: string): string {
+const SETTINGS_NAV: NavItem = { hash: "#/settings", label: "Settings", icon: SettingsIcon };
+
+// A small, curated icon subset extensions can name; anything else falls back to Puzzle.
+const EXT_ICONS: Record<string, LucideIcon> = {
+  puzzle: PuzzleIcon,
+  bell: BellIcon,
+  box: BoxIcon,
+  plug: PlugIcon,
+  webhook: WebhookIcon,
+  zap: ZapIcon,
+  activity: ActivityIcon,
+};
+
+function extIcon(name?: string): LucideIcon {
+  return (name && EXT_ICONS[name]) || PuzzleIcon;
+}
+
+/** Active extensions that registered a page become nav items, slotted before Settings. */
+function extensionNav(extensions: Extension[]): NavItem[] {
+  return extensions
+    .filter((ext) => ext.status === "active" && ext.pages.length > 0)
+    .map((ext) => ({ hash: `#/ext/${ext.name}`, label: ext.pages[0]!.label, icon: extIcon(ext.pages[0]!.icon) }));
+}
+
+function activeHash(hash: string, items: NavItem[]): string {
   if (window.location.pathname.startsWith("/chats/")) return "";
-  for (const item of NAV) {
+  for (const item of items) {
     if (item.hash !== "#/" && hash.startsWith(item.hash)) return item.hash;
   }
   // Ticket and loop-detail drill-ins highlight their list view.
@@ -35,11 +73,11 @@ function activeHash(hash: string): string {
 }
 
 
-function NavLinks({ hash, compact }: { hash: string; compact?: boolean }) {
-  const active = activeHash(hash);
+function NavLinks({ hash, items, compact }: { hash: string; items: NavItem[]; compact?: boolean }) {
+  const active = activeHash(hash, items);
   return (
     <>
-      {NAV.map(({ hash: h, label, icon: Icon }) => (
+      {items.map(({ hash: h, label, icon: Icon }) => (
         <button
           key={h}
           onClick={() => {
@@ -75,6 +113,8 @@ function initials(name: string): string {
 export function Shell({ children }: { children: ReactNode }) {
   const hash = useHashRoute();
   const identity = useIdentity();
+  const extensions = useExtensions();
+  const navItems: NavItem[] = [...CORE_NAV, ...extensionNav(extensions), SETTINGS_NAV];
 
   return (
     <div className="flex h-full">
@@ -94,7 +134,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="flex flex-col gap-0.5">
-          <NavLinks hash={hash} />
+          <NavLinks hash={hash} items={navItems} />
         </nav>
 
         <div className="mt-auto flex flex-col gap-2">
@@ -117,7 +157,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-1 border-b border-border bg-side px-3 py-2 md:hidden">
           <Mark className="mr-1 size-6 text-fg" />
-          <NavLinks hash={hash} compact />
+          <NavLinks hash={hash} items={navItems} compact />
           <span className="ml-auto" />
           <button
             onClick={() => openCapture()}

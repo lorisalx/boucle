@@ -59,8 +59,19 @@ node src/server.ts
 
 Open `http://localhost:4419`.
 
+## Extensions
+
+Boucle is extensible without forking. An extension is a plain TypeScript module — a directory
+with an `index.ts` that default-exports a manifest — loaded with dynamic `import()` at startup:
+no build step, no bundler. It can add agent tools, HTTP routes, web pages, runners, providers,
+and event handlers. Drop one in `$BOUCLE_EXTENSIONS_DIR` (default
+`$XDG_DATA_HOME/boucle/extensions`) and restart; `boucle ext list` shows what loaded. Extensions
+run in-process with full privileges, so only install ones you trust. See
+[Extensions](docs/extensions.md) and the bundled `extensions/hello-world/` template.
+
 ## Documentation
 
 - [Self-hosting](docs/self-hosting.md)
 - [Providers](docs/providers.md)
+- [Extensions](docs/extensions.md)
 - [Apache 2.0 license](LICENSE)

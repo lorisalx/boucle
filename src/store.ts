@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { resolveBrainDir } from "./config.ts";
 import { emit } from "./extensions/events.ts";
 import { getIdentity, type Identity } from "./identity.ts";
+import { isKnownRunnerName, knownRunnerNames } from "./selectors.ts";
 import type { RunnerName } from "./settings.ts";
 
 export type TicketStatus =
@@ -356,8 +357,8 @@ function toLoop(row: RawLoop): Loop {
 }
 
 function validatedRunner(value: RunnerName | null): RunnerName | null {
-  if (value === null || value === "vibe" || value === "codex" || value === "claude") return value;
-  throw new Error("runner must be one of: vibe, codex, claude, or null.");
+  if (value === null || isKnownRunnerName(value)) return value;
+  throw new Error(`runner must be one of: ${knownRunnerNames().join(", ")}, or null.`);
 }
 
 /** Default chief-of-staff heartbeat loop prompt, seeded (interpolated) on first boot. */
@@ -1686,6 +1687,11 @@ export class BoucleStore {
 
   setProjectOrder(orderedIds: string[]): void {
     orderedIds.forEach((projectId, i) => this.upsertProjectMeta(projectId, { sortOrder: i }));
+  }
+
+  /** The raw sqlite handle, exposed to extensions (ctx.db) for their own `ext_<name>_` tables. */
+  get rawDb(): DatabaseSync {
+    return this.db;
   }
 
   getMeta(key: string): string | null {

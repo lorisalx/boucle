@@ -2,6 +2,7 @@ import { Brain } from "./Brain.tsx";
 import { Brain as BrainGraph } from "./BrainGraph.tsx";
 import { CaptureModal } from "./Capture.tsx";
 import { Chat } from "./Chat.tsx";
+import { ExtensionPage } from "./ExtensionPage.tsx";
 import { Home } from "./Home.tsx";
 import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
@@ -19,6 +20,7 @@ export function App() {
   const agentMatch = /^\/agent\/(vibe|codex|claude)\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
   const ticketMatch = /^#\/ticket\/(.+)$/.exec(hash);
   const loopMatch = /^#\/loops\/(.+)$/.exec(hash);
+  const extMatch = /^#\/ext\/([a-z][a-z0-9-]*)$/.exec(hash);
 
   let view = <Home />;
   if (agentMatch) {
@@ -28,6 +30,7 @@ export function App() {
   } else if (chatMatch) view = <Chat conversationId={decodeURIComponent(chatMatch[1])} />;
   else if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
   else if (loopMatch) view = <LoopDetail loopId={loopMatch[1]} />;
+  else if (extMatch) view = <ExtensionPage name={extMatch[1]!} />;
   else if (hash.startsWith("#/projects")) view = <Projects />;
   else if (hash.startsWith("#/graph")) view = <BrainGraph />;
   else if (hash.startsWith("#/brain")) view = <Brain />;

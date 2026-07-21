@@ -80,10 +80,49 @@ export interface Settings {
   mistralApiKeyPresent: boolean;
   openaiApiKeyPresent: boolean;
   sources: Record<SettingsField, SettingSource>;
+  extensions: ExtensionSettings[];
 }
 
 export type SettingSource = "meta" | "env" | "default";
-export type RunnerName = "vibe" | "codex" | "claude";
+// Core runners; extensions can add more, so the wire type is a plain string.
+export type RunnerName = string;
+
+export interface ExtensionSettingSpec {
+  key: string;
+  label?: string;
+  env?: string;
+  placeholder?: string;
+}
+
+export interface ExtensionPage {
+  label: string;
+  icon?: string;
+}
+
+export interface Extension {
+  name: string;
+  version: string;
+  description: string;
+  status: "active" | "disabled" | "error";
+  error?: string;
+  settings: ExtensionSettingSpec[];
+  pages: ExtensionPage[];
+  toolNames: string[];
+  routeCount: number;
+}
+
+export interface ExtensionSettingView {
+  key: string;
+  label?: string;
+  placeholder?: string;
+  value: string;
+  source: "meta" | "env" | "unset";
+}
+
+export interface ExtensionSettings {
+  name: string;
+  fields: ExtensionSettingView[];
+}
 export type SettingsField =
   | "appName"
   | "ownerName"
@@ -97,7 +136,9 @@ export type SettingsField =
   | "t3codeUrl"
   | "t3codeToken"
   | "t3codeProject";
-export type SettingsUpdate = Partial<Record<SettingsField, string | null>>;
+export type SettingsUpdate = Partial<Record<SettingsField, string | null>> & {
+  extensions?: Record<string, Record<string, string | null>>;
+};
 
 export interface ChatEntry {
   role: "user" | "assistant" | "tool";
@@ -353,6 +394,11 @@ export const api = {
     post("/api/loop-state", { enabled }).then((r) => json<{ enabled: boolean }>(r)),
   settings: () => fetch("/api/settings").then((r) => json<Settings>(r)),
   updateSettings: (update: SettingsUpdate) => put("/api/settings", update).then((r) => json<Settings>(r)),
+  extensions: () => fetch("/api/extensions").then((r) => json<Extension[]>(r)),
+  toggleExtension: (name: string) =>
+    post(`/api/extensions/${encodeURIComponent(name)}/toggle`, {}).then((r) =>
+      json<{ restartRequired: boolean; enabled: boolean }>(r),
+    ),
   chat: {
     get: (conversationId: string) =>
       fetch(`/api/chats/${encodeURIComponent(conversationId)}`).then((r) => json<ChatTranscript>(r)),

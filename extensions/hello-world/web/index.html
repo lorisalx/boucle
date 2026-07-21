@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hello · Boucle extension</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #18181b;
+        --muted: #71717a;
+        --bg: #ffffff;
+        --card: #fafafa;
+        --border: #e4e4e7;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #fafafa;
+          --muted: #a1a1aa;
+          --bg: #0a0a0a;
+          --card: #161616;
+          --border: #262626;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 2.5rem;
+        font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.25rem; }
+      p.lede { color: var(--muted); margin: 0 0 2rem; }
+      .total { font-size: 3rem; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+      .total small { font-size: 0.9rem; font-weight: 500; color: var(--muted); margin-left: 0.5rem; }
+      ul { list-style: none; padding: 0; margin: 1.75rem 0 0; display: grid; gap: 0.5rem; max-width: 22rem; }
+      li {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.6rem 0.9rem; border: 1px solid var(--border); border-radius: 0.6rem; background: var(--card);
+      }
+      li .k { color: var(--muted); text-transform: capitalize; }
+      li .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+      .err { color: #dc2626; }
+    </style>
+  </head>
+  <body>
+    <h1>Hello from an extension</h1>
+    <p class="lede">This page is served straight from <code>extensions/hello-world/web/</code>.</p>
+    <div class="total" id="total">—</div>
+    <ul id="by-status"></ul>
+    <script>
+      async function load() {
+        try {
+          const res = await fetch("/api/ext/hello-world/stats");
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          document.getElementById("total").innerHTML =
+            data.open + '<small>open ticket' + (data.open === 1 ? "" : "s") + "</small>";
+          const ul = document.getElementById("by-status");
+          const entries = Object.entries(data.byStatus).sort((a, b) => b[1] - a[1]);
+          ul.innerHTML = entries.length
+            ? entries.map(([k, v]) => '<li><span class="k">' + k + '</span><span class="v">' + v + "</span></li>").join("")
+            : '<li><span class="k">no open tickets</span></li>';
+        } catch (e) {
+          document.getElementById("total").innerHTML =
+            '<span class="err">Failed to load: ' + e.message + "</span>";
+        }
+      }
+      load();
+    </script>
+  </body>
+</html>
