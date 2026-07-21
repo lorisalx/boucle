@@ -17,14 +17,14 @@ export function App() {
   const hash = useHashRoute();
   const chatMatch = /^\/chats\/([^/]+)$/.exec(window.location.pathname);
   const vibeMatch = /^\/vibe\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
-  const agentMatch = /^\/agent\/(vibe|codex|claude)\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
+  const agentMatch = /^\/agent\/([a-z][a-z0-9-]*)\/([^/]+)\/([^/]+)$/.exec(window.location.pathname);
   const ticketMatch = /^#\/ticket\/(.+)$/.exec(hash);
   const loopMatch = /^#\/loops\/(.+)$/.exec(hash);
   const extMatch = /^#\/ext\/([a-z][a-z0-9-]*)$/.exec(hash);
 
   let view = <Home />;
   if (agentMatch) {
-    view = <VibeThread runner={agentMatch[1] as "vibe" | "codex" | "claude"} scope={decodeURIComponent(agentMatch[2])} sessionId={decodeURIComponent(agentMatch[3])} />;
+    view = <VibeThread runner={agentMatch[1]} scope={decodeURIComponent(agentMatch[2])} sessionId={decodeURIComponent(agentMatch[3])} />;
   } else if (vibeMatch) {
     view = <VibeThread runner="vibe" scope={decodeURIComponent(vibeMatch[1])} sessionId={decodeURIComponent(vibeMatch[2])} />;
   } else if (chatMatch) view = <Chat conversationId={decodeURIComponent(chatMatch[1])} />;

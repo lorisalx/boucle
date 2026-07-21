@@ -54,13 +54,14 @@ function ExtensionRow({ ext, values }: { ext: Extension; values: ExtensionSettin
   const [saved, setSaved] = useState(false);
   const [restart, setRestart] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const enabled = ext.status !== "disabled";
+  const [enabled, setEnabled] = useState(ext.status !== "disabled");
 
   const toggle = async () => {
     setBusy("toggle");
     setError(null);
     try {
-      await api.toggleExtension(ext.name);
+      const result = await api.toggleExtension(ext.name);
+      setEnabled(result.enabled);
       setRestart(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -181,6 +182,10 @@ function runnerValues(settings: Settings) {
   };
 }
 
+function selectorOptions(available: string[], selected: string): string[] {
+  return available.includes(selected) ? available : [...available, selected];
+}
+
 function dirtyUpdate<T extends object>(current: T, initial: T): SettingsUpdate {
   const update: SettingsUpdate = {};
   for (const [key, value] of Object.entries(current) as Array<[SettingsField, string]>) {
@@ -288,15 +293,11 @@ export function Settings() {
               <select
                 className={INPUT}
                 value={providerForm.provider}
-                onChange={(event) =>
-                  setProviderForm((value) => ({
-                    ...value,
-                    provider: event.target.value as "mistral" | "openai",
-                  }))
-                }
+                onChange={(event) => setProviderForm((value) => ({ ...value, provider: event.target.value }))}
               >
-                <option value="mistral">Mistral</option>
-                <option value="openai">OpenAI-compatible</option>
+                {selectorOptions(settings.availableProviders, providerForm.provider).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </Field>
             <Field label="Chat model" source={source("chatModel")}>
@@ -358,14 +359,11 @@ export function Settings() {
               <select
                 className={INPUT}
                 value={runnerForm.runner}
-                onChange={(event) => setRunnerForm((value) => ({
-                  ...value,
-                  runner: event.target.value as "vibe" | "codex" | "claude",
-                }))}
+                onChange={(event) => setRunnerForm((value) => ({ ...value, runner: event.target.value }))}
               >
-                <option value="vibe">Vibe</option>
-                <option value="codex">Codex</option>
-                <option value="claude">Claude</option>
+                {selectorOptions(settings.availableRunners, runnerForm.runner).map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
               </select>
             </Field>
             <Field label="t3code project" source={source("t3codeProject")}>

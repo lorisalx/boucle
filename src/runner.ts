@@ -2,7 +2,7 @@
 
 import { ClaudeRunner } from "./claude.ts";
 import { CodexRunner } from "./codex.ts";
-import { registerRunnerName } from "./selectors.ts";
+import { registerRunnerName, unregisterRunnerName } from "./selectors.ts";
 import { resolveRunnerSetting, type RunnerName, type SettingsStore } from "./settings.ts";
 import { execVibe } from "./vibe.ts";
 import { readVibeTranscript } from "./vibe-transcript.ts";
@@ -87,12 +87,17 @@ const runners = new Map<string, AgentRunner>([
 const warnedMissing = new Set<string>();
 
 /** Extensions add runners to the live registry (also registers the name for settings validation). */
-export function registerRunner(runner: AgentRunner): void {
+export function registerRunner(runner: AgentRunner): () => void {
   if (runners.has(runner.name)) {
     throw new Error(`runner already registered: ${runner.name}`);
   }
   runners.set(runner.name, runner);
   registerRunnerName(runner.name);
+  return () => {
+    if (runners.get(runner.name) !== runner) return;
+    runners.delete(runner.name);
+    unregisterRunnerName(runner.name);
+  };
 }
 
 export function getAgentRunner(override: RunnerName | null = null, store: SettingsStore | null = null): AgentRunner {

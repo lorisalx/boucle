@@ -29,11 +29,15 @@ export function emit<K extends EventName>(event: K, payload: BoucleEvents[K]): v
   }
 }
 
-export function on<K extends EventName>(event: K, handler: EventHandler<K>): void {
+export function on<K extends EventName>(event: K, handler: EventHandler<K>): () => void {
   let eventHandlers = handlers.get(event);
   if (!eventHandlers) {
     eventHandlers = new Set();
     handlers.set(event, eventHandlers);
   }
   eventHandlers.add(handler);
+  return () => {
+    eventHandlers.delete(handler);
+    if (eventHandlers.size === 0) handlers.delete(event);
+  };
 }

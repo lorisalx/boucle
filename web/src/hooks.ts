@@ -22,6 +22,8 @@ const IDENTITY_FALLBACK: Settings = {
   providerConfigured: false,
   mistralApiKeyPresent: false,
   openaiApiKeyPresent: false,
+  availableProviders: ["mistral", "openai"],
+  availableRunners: ["vibe", "codex", "claude"],
   sources: {
     appName: "default",
     ownerName: "default",

@@ -19,7 +19,6 @@ import {
   loadExtensions,
   toggleExtension,
   viewExtensionSettings,
-  writeExtensionSetting,
 } from "./extensions/loader.ts";
 import type { LoadedExtension } from "./extensions/types.ts";
 import { getIdentity, invalidateIdentity, type Identity } from "./identity.ts";
@@ -66,6 +65,7 @@ import { VIBE_SCOPE_RE, VIBE_SESSION_RE } from "./vibe-transcript.ts";
 import { getProvider, invalidateProvider } from "./providers/index.ts";
 import type { Provider } from "./providers/types.ts";
 import { getAgentRunner } from "./runner.ts";
+import { isKnownRunnerName, knownProviderNames, knownRunnerNames } from "./selectors.ts";
 import type { RunnerName } from "./settings.ts";
 import {
   CONFIGURABLE_SETTING_KEYS,
@@ -366,7 +366,7 @@ app.get("/api/agents/:runner/:scope/:sessionId", async (c) => {
   const runnerName = c.req.param("runner") as RunnerName;
   const scope = c.req.param("scope");
   const sessionId = c.req.param("sessionId");
-  if (runnerName !== "vibe" && runnerName !== "codex" && runnerName !== "claude") {
+  if (!isKnownRunnerName(runnerName)) {
     return c.json({ error: "invalid agent runner" }, 400);
   }
   if (!validVibeParams(scope, sessionId)) return c.json({ error: "invalid agent scope or session id" }, 400);
@@ -423,17 +423,25 @@ function settingsResponse() {
     mistralApiKeyPresent: (process.env.MISTRAL_API_KEY ?? "").trim().length > 0,
     openaiApiKeyPresent: (process.env.OPENAI_API_KEY ?? "").trim().length > 0,
     sources,
+    availableProviders: knownProviderNames(),
+    availableRunners: knownRunnerNames(),
     extensions: extensions.map((ext) => ({ name: ext.name, fields: viewExtensionSettings(store, ext) })),
   };
 }
 
-/** Persist per-extension settings from a PUT body, validated against declared keys only. */
-function applyExtensionSettings(value: unknown): string[] {
-  if (value === undefined) return [];
+interface ExtensionSettingsUpdate {
+  changed: string[];
+  values: Array<[string, string | null]>;
+}
+
+/** Validate per-extension settings and prepare namespaced writes without mutating the store. */
+function prepareExtensionSettings(value: unknown): ExtensionSettingsUpdate {
+  if (value === undefined) return { changed: [], values: [] };
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("extensions must be an object");
   }
   const changed: string[] = [];
+  const values: Array<[string, string | null]> = [];
   for (const [name, fields] of Object.entries(value)) {
     const ext = extensions.find((e) => e.name === name);
     if (!ext) throw new Error(`Unknown extension: ${name}.`);
@@ -444,11 +452,12 @@ function applyExtensionSettings(value: unknown): string[] {
     for (const [key, fieldValue] of Object.entries(fields)) {
       if (!declared.has(key)) throw new Error(`Unknown setting ${key} for extension ${name}.`);
       if (fieldValue !== null && typeof fieldValue !== "string") throw new Error(`${name}.${key} must be a string.`);
-      writeExtensionSetting(store, name, key, fieldValue ?? "");
+      const value = fieldValue === null || fieldValue.trim().length === 0 ? null : fieldValue;
+      values.push([`ext.${name}.${key}`, value]);
       changed.push(`ext.${name}.${key}`);
     }
   }
-  return changed;
+  return { changed, values };
 }
 
 app.get("/api/settings", (c) => c.json(settingsResponse()));
@@ -475,14 +484,14 @@ app.put("/api/settings", async (c) => {
     }
     const candidate = settingsWithUpdate(store, update, demoMode);
     validateResolvedSettings(candidate);
-    const extChanged = applyExtensionSettings(extUpdate);
-    store.setMetaValues(Object.entries(update));
+    const extensionUpdate = prepareExtensionSettings(extUpdate);
+    store.setMetaValues([...Object.entries(update), ...extensionUpdate.values]);
     invalidateIdentity();
     invalidateProvider();
     getIdentity(store);
     provider = getProvider(store);
     search.reconfigureProvider();
-    emit("settings.changed", { keys: [...Object.keys(update), ...extChanged] });
+    emit("settings.changed", { keys: [...Object.keys(update), ...extensionUpdate.changed] });
     return c.json(settingsResponse());
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
@@ -847,7 +856,8 @@ app.all("/mcp", async (c) => {
 app.get("/api/mcp-info", (c) => {
   const token = getMcpToken(store);
   const url = `http://127.0.0.1:${BOUCLE_PORT}/mcp`;
-  const displayDbPath = dbPath.replace(process.env.HOME ?? " ", "$HOME");
+  const homeDir = process.env.HOME;
+  const displayDbPath = homeDir ? dbPath.replace(homeDir, "$HOME") : dbPath;
   return c.json({ url, token, configToml: mcpConfigToml({ url, token, cliPath: "src/cli.ts", dbPath: displayDbPath }) });
 });
 
@@ -863,6 +873,7 @@ for (const ext of extensions) {
 try {
   provider = getProvider(store);
   getAgentRunner(null, store);
+  search.reconfigureProvider();
 } catch (error) {
   process.stderr.write(`[boucle] ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);

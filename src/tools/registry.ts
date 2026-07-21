@@ -18,11 +18,15 @@ export interface ToolDef {
 
 const tools: ToolDef[] = [...CORE_TOOLS];
 
-export function registerCoreTool(def: ToolDef): void {
+export function registerCoreTool(def: ToolDef): () => void {
   if (tools.some((tool) => tool.name === def.name)) {
     throw new Error(`Boucle tool already registered: ${def.name}`);
   }
   tools.push(def);
+  return () => {
+    const index = tools.indexOf(def);
+    if (index !== -1) tools.splice(index, 1);
+  };
 }
 
 export function listTools(): ToolDef[] {

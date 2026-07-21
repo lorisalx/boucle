@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { Hono } from "hono";
+
+import { emit } from "./extensions/events.ts";
 import { loadExtensions, viewExtensionSettings } from "./extensions/loader.ts";
+import { isKnownProviderName, isKnownRunnerName } from "./selectors.ts";
 import { BoucleStore } from "./store.ts";
 import { listTools } from "./tools/registry.ts";
 
@@ -27,6 +31,11 @@ function writeExt(base: string, name: string, body: string): void {
   writeFileSync(join(base, name, "index.ts"), `export default {\n  name: ${JSON.stringify(name)},\n${body}\n};\n`);
 }
 
+function writePage(base: string, name: string): void {
+  mkdirSync(join(base, name, "web"), { recursive: true });
+  writeFileSync(join(base, name, "web", "index.html"), "<!doctype html><title>test</title>");
+}
+
 function toolPrefix(name: string): string {
   return name.replace(/-/g, "_");
 }
@@ -45,7 +54,9 @@ test("loads a good extension and registers a prefixed read-only tool", async () 
     ctx.registerTool({ name: "ping", title: "Ping", description: "pong", schema: {}, readOnly: true, handler: () => ({ pong: true }) });
   },`,
   );
-  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  writePage(base, name);
+  const app = new Hono();
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base], app });
   const ext = loaded.find((e) => e.name === name);
   assert.ok(ext);
   assert.equal(ext.status, "active");
@@ -58,6 +69,7 @@ test("loads a good extension and registers a prefixed read-only tool", async () 
   assert.ok(tool, "the prefixed tool is in the shared registry");
   assert.equal(tool.readOnly, true);
   assert.deepEqual(await tool.handler({ store: newStore(base) }, {}), { pong: true });
+  assert.deepEqual(await (await app.request(`/api/ext/${name}/ping`)).json(), { ok: true });
 });
 
 test("isolates a broken extension; siblings still load", async () => {
@@ -71,6 +83,53 @@ test("isolates a broken extension; siblings still load", async () => {
   const badExt = loaded.find((e) => e.name === bad);
   assert.equal(badExt?.status, "error");
   assert.match(badExt?.error ?? "", /kaboom/);
+});
+
+test("a setup failure leaves no tools, handlers, runners, or providers registered", async () => {
+  const base = tmpBase();
+  const name = uniqueName("atomic");
+  const runner = uniqueName("runner");
+  const provider = uniqueName("provider");
+  const eventFlag = `__boucle_${toolPrefix(name)}`;
+  writeExt(
+    base,
+    name,
+    `  setup(ctx) {
+    ctx.registerTool({ name: "staged", title: "Staged", description: "test", schema: {}, readOnly: true, handler: () => ({}) });
+    ctx.on("settings.changed", () => { globalThis[${JSON.stringify(eventFlag)}] = true; });
+    ctx.registerRunner({ name: ${JSON.stringify(runner)}, exec: async () => ({}), readTranscript: async () => null });
+    ctx.registerProvider(${JSON.stringify(provider)}, () => ({}));
+    throw new Error("setup failed");
+  },`,
+  );
+
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  assert.equal(loaded[0]?.status, "error");
+  assert.equal(listTools().some((tool) => tool.name === `${toolPrefix(name)}_staged`), false);
+  assert.equal(isKnownRunnerName(runner), false);
+  assert.equal(isKnownProviderName(provider), false);
+
+  emit("settings.changed", { keys: [] });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal((globalThis as Record<string, unknown>)[eventFlag], undefined);
+});
+
+test("a registration conflict rolls back earlier registrations", async () => {
+  const base = tmpBase();
+  const name = uniqueName("conflict");
+  writeExt(
+    base,
+    name,
+    `  setup(ctx) {
+    ctx.registerTool({ name: "staged", title: "Staged", description: "test", schema: {}, readOnly: true, handler: () => ({}) });
+    ctx.registerRunner({ name: "vibe", exec: async () => ({}), readTranscript: async () => null });
+  },`,
+  );
+
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  assert.equal(loaded[0]?.status, "error");
+  assert.match(loaded[0]?.error ?? "", /runner already registered/);
+  assert.equal(listTools().some((tool) => tool.name === `${toolPrefix(name)}_staged`), false);
 });
 
 test("respects the disabled flag and skips setup", async () => {
@@ -103,6 +162,33 @@ test("a duplicate extension name across dirs is skipped with an error", async ()
   assert.match(dups[1]?.error ?? "", /duplicate/);
 });
 
+test("the manifest name must match its directory namespace", async () => {
+  const base = tmpBase();
+  const directoryName = uniqueName("directory");
+  const manifestName = uniqueName("manifest");
+  mkdirSync(join(base, directoryName), { recursive: true });
+  writeFileSync(
+    join(base, directoryName, "index.ts"),
+    `export default { name: ${JSON.stringify(manifestName)}, setup() {} };\n`,
+  );
+
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  assert.equal(loaded[0]?.status, "error");
+  assert.match(loaded[0]?.error ?? "", /does not match directory name/);
+});
+
+test("setting keys cannot alias the enabled flag or KV namespace", async () => {
+  const base = tmpBase();
+  const enabled = uniqueName("reserved-enabled");
+  const kv = uniqueName("reserved-kv");
+  writeExt(base, enabled, `  settings: [{ key: "enabled" }],\n  setup() {},`);
+  writeExt(base, kv, `  settings: [{ key: "kv.token" }],\n  setup() {},`);
+
+  const loaded = await loadExtensions({ store: newStore(base), dirs: [base] });
+  assert.equal(loaded.find((ext) => ext.name === enabled)?.status, "error");
+  assert.equal(loaded.find((ext) => ext.name === kv)?.status, "error");
+});
+
 test("kv writes are namespaced under ext.<name>.kv.", async () => {
   const base = tmpBase();
   const name = uniqueName("kv");
@@ -113,11 +199,18 @@ test("kv writes are namespaced under ext.<name>.kv.", async () => {
   assert.equal(store.getMeta("token"), null, "not written to the bare key");
 });
 
-test("declared settings resolve meta over env over unset", async () => {
+test("declared settings report their source without exposing environment values", async () => {
   const base = tmpBase();
   const name = uniqueName("cfg");
   const envVar = `BOUCLE_TEST_${toolPrefix(name).toUpperCase()}`;
-  writeExt(base, name, `  settings: [{ key: "topic", label: "Topic", env: ${JSON.stringify(envVar)} }],\n  setup() {},`);
+  writeExt(
+    base,
+    name,
+    `  settings: [{ key: "topic", label: "Topic", env: ${JSON.stringify(envVar)} }],
+  setup(ctx) {
+    ctx.registerTool({ name: "setting", title: "Setting", description: "test", schema: {}, readOnly: true, handler: () => ctx.settings.get("topic") });
+  },`,
+  );
   const store = newStore(base);
   const loaded = await loadExtensions({ store, dirs: [base] });
   const ext = loaded.find((e) => e.name === name);
@@ -127,8 +220,11 @@ test("declared settings resolve meta over env over unset", async () => {
 
   process.env[envVar] = "from-env";
   let view = viewExtensionSettings(store, ext)[0];
-  assert.equal(view?.value, "from-env");
+  assert.equal(view?.value, "");
   assert.equal(view?.source, "env");
+  const tool = listTools().find((candidate) => candidate.name === `${toolPrefix(name)}_setting`);
+  assert.ok(tool);
+  assert.equal(await tool.handler({ store }, {}), "from-env");
 
   store.setMeta(`ext.${name}.topic`, "from-meta");
   view = viewExtensionSettings(store, ext)[0];

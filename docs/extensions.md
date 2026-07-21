@@ -143,6 +143,11 @@ Declare settings in the manifest; they appear as fields in **Settings → Extens
 `meta` (saved in the UI) → `env` (the declared `env` var) → `undefined`. Settings are **plain
 values**: anything sensitive (API keys, secrets) should come from an environment variable, the
 same doctrine Boucle uses for provider keys — declare `env` and leave the value unset in the UI.
+Environment-backed values are never returned to the browser; the UI shows only that the variable
+is set.
+
+Setting keys must be unique within the manifest. `enabled` and keys beginning with `kv.` are
+reserved for the extension toggle and `ctx.kv` storage.
 
 ## Enable / disable
 

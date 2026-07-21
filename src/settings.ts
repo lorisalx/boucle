@@ -166,7 +166,7 @@ export function validateResolvedSettings(settings: ResolvedSettings): void {
   if (settings.provider.value === "openai" && !settings.chatModel.value) {
     throw new Error("BOUCLE_CHAT_MODEL is required when BOUCLE_PROVIDER=openai.");
   }
-  if (!settings.chatModel.value) throw new Error("chatModel is required.");
+  if (settings.provider.value === "mistral" && !settings.chatModel.value) throw new Error("chatModel is required.");
   if (settings.provider.value === "openai" && !settings.openaiBaseUrl.value) {
     throw new Error("openaiBaseUrl is required when provider=openai.");
   }

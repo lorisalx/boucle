@@ -33,7 +33,8 @@ function threadHref(runner: RunnerName, loopId: string, sessionId: string): stri
 function modelHelp(runner: RunnerName): string {
   if (runner === "vibe") return "Vibe model. Blank uses devstral-2512.";
   if (runner === "codex") return "Codex model. Blank uses the CLI account or profile default.";
-  return "Claude model or alias. Blank uses the Claude CLI default.";
+  if (runner === "claude") return "Claude model or alias. Blank uses the Claude CLI default.";
+  return `${runner} model. Blank uses the extension runner's default.`;
 }
 
 const STATUS_TONE: Record<LoopRunStatus, Tone> = {
@@ -311,9 +312,8 @@ export function LoopDetail({ loopId }: { loopId: string }) {
 
   const days = (draft.activeDays ?? "").split(",").map((s) => s.trim());
   const effectiveRunner = draft.runner ?? settings.runner;
-  const threadRunner = draft.threadProject === "vibe" || draft.threadProject === "codex" || draft.threadProject === "claude"
-    ? draft.threadProject
-    : effectiveRunner;
+  const hasKnownThreadRunner = settings.availableRunners.includes(draft.threadProject ?? "");
+  const threadRunner = hasKnownThreadRunner ? draft.threadProject! : effectiveRunner;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8">
@@ -334,7 +334,7 @@ export function LoopDetail({ loopId }: { loopId: string }) {
           <MessageSquareIcon className="size-4 text-dim" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-fg">{threadRunner} session</p>
-            {draft.threadProject === "vibe" || draft.threadProject === "codex" || draft.threadProject === "claude" ? (
+            {hasKnownThreadRunner ? (
               <a
                 href={threadHref(threadRunner, loopId, draft.threadId)}
                 className="block truncate font-mono text-xs text-link hover:underline"
@@ -413,9 +413,10 @@ export function LoopDetail({ loopId }: { loopId: string }) {
               className={INPUT_CLASS}
             >
               <option value="">Global ({settings.runner})</option>
-              <option value="vibe">Vibe</option>
-              <option value="codex">Codex</option>
-              <option value="claude">Claude</option>
+              {(settings.availableRunners.includes(draft.runner ?? "")
+                ? settings.availableRunners
+                : [...settings.availableRunners, ...(draft.runner ? [draft.runner] : [])]
+              ).map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </Field>
           <Field label="Model" hint={modelHelp(effectiveRunner)}>

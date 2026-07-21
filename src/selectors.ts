@@ -12,6 +12,10 @@ export function registerRunnerName(name: string): void {
   runnerNames.add(name);
 }
 
+export function unregisterRunnerName(name: string): void {
+  runnerNames.delete(name);
+}
+
 export function knownRunnerNames(): string[] {
   return [...runnerNames];
 }
@@ -22,6 +26,10 @@ export function isKnownRunnerName(name: string): boolean {
 
 export function registerProviderName(name: string): void {
   providerNames.add(name);
+}
+
+export function unregisterProviderName(name: string): void {
+  providerNames.delete(name);
 }
 
 export function knownProviderNames(): string[] {

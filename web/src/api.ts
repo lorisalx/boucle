@@ -65,7 +65,7 @@ export interface Settings {
   orgName: string;
   demoMode: boolean;
   providerName: string;
-  provider: "mistral" | "openai";
+  provider: string;
   chatModel: string;
   embedModel: string;
   transcribeModel: string;
@@ -80,6 +80,8 @@ export interface Settings {
   mistralApiKeyPresent: boolean;
   openaiApiKeyPresent: boolean;
   sources: Record<SettingsField, SettingSource>;
+  availableProviders: string[];
+  availableRunners: RunnerName[];
   extensions: ExtensionSettings[];
 }
 

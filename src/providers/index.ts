@@ -3,7 +3,7 @@
 import { createMistralProvider, LEGACY_EMBED_MODEL } from "./mistral.ts";
 import { createOpenAIProvider } from "./openai.ts";
 import type { Provider } from "./types.ts";
-import { registerProviderName } from "../selectors.ts";
+import { registerProviderName, unregisterProviderName } from "../selectors.ts";
 import { resolveSettings, validateResolvedSettings, type SettingsStore } from "../settings.ts";
 
 /** A provider factory resolves its own models/keys from the store (via resolveSettings). */
@@ -40,14 +40,29 @@ const factories = new Map<string, ProviderFactory>([
 const warnedMissing = new Set<string>();
 
 /** Extensions add providers to the live registry (also registers the name for settings validation). */
-export function registerProvider(name: string, factory: ProviderFactory): void {
+export function registerProvider(name: string, factory: ProviderFactory): () => void {
   if (factories.has(name)) throw new Error(`provider already registered: ${name}`);
   factories.set(name, factory);
   registerProviderName(name);
+  selected = null;
+  return () => {
+    if (factories.get(name) !== factory) return;
+    factories.delete(name);
+    unregisterProviderName(name);
+    selected = null;
+  };
 }
 
 let selected: Provider | null = null;
 let settingsStore: SettingsStore | null = null;
+
+function withProvider(store: SettingsStore | null, provider: string): SettingsStore {
+  return {
+    getMeta(key) {
+      return key === "provider" ? provider : store?.getMeta(key) ?? null;
+    },
+  };
+}
 
 export function getProvider(store?: SettingsStore): Provider {
   if (store && store !== settingsStore) {
@@ -55,17 +70,19 @@ export function getProvider(store?: SettingsStore): Provider {
     selected = null;
   }
   if (selected) return selected;
-  const settings = resolveSettings(settingsStore, false);
-  validateResolvedSettings(settings);
-  let factory = factories.get(settings.provider.value);
+  const configured = resolveSettings(settingsStore, false);
+  let factory = factories.get(configured.provider.value);
+  let effectiveStore = settingsStore;
   if (!factory) {
-    if (!warnedMissing.has(settings.provider.value)) {
-      warnedMissing.add(settings.provider.value);
-      console.error(`[boucle] unknown provider "${settings.provider.value}"; falling back to ${DEFAULT_PROVIDER}.`);
+    if (!warnedMissing.has(configured.provider.value)) {
+      warnedMissing.add(configured.provider.value);
+      console.error(`[boucle] unknown provider "${configured.provider.value}"; falling back to ${DEFAULT_PROVIDER}.`);
     }
     factory = factories.get(DEFAULT_PROVIDER)!;
+    effectiveStore = withProvider(settingsStore, DEFAULT_PROVIDER);
   }
-  selected = factory(settingsStore);
+  validateResolvedSettings(resolveSettings(effectiveStore, false));
+  selected = factory(effectiveStore);
   return selected;
 }
 
