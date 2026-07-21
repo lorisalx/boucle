@@ -48,6 +48,11 @@ interface StoredEmbedding extends SearchDocument {
 const EMPTY_COUNTS = (): Record<SearchSource, number> => ({ ticket: 0, event: 0, meeting: 0, brain: 0 });
 const RRF_K = 60;
 const EMBED_BATCH_SIZE = 32;
+// Embedding failures are treated as transient: back off and retry rather than disabling
+// vector search for the life of the process.
+const EMBED_BACKOFF_BASE_MS = 5_000;
+const EMBED_BACKOFF_MAX_MS = 5 * 60_000;
+const QUERY_VECTOR_CACHE_MAX = 256;
 let loggedFtsFallback = false;
 
 function hash(content: string): string {
@@ -138,7 +143,10 @@ export class BrainSearch implements SearchIndexer {
   private embeddingTimer: ReturnType<typeof setTimeout> | null = null;
   private embeddingInFlight: Promise<void> | null = null;
   private bootstrapping = false;
-  private embeddingDisabled = false;
+  // Transient-failure backoff: a paused window, not a permanent kill switch.
+  private embeddingBackoffUntil = 0;
+  private embeddingFailureStreak = 0;
+  private readonly queryVectorCache = new Map<string, number[]>();
 
   constructor(dbPath: string, store: BoucleStore) {
     this.db = new DatabaseSync(dbPath);
@@ -159,8 +167,47 @@ export class BrainSearch implements SearchIndexer {
   reconfigureProvider(): void {
     this.provider = getProvider();
     this.embeddingModel = getEmbeddingModel();
-    this.embeddingDisabled = false;
+    this.embeddingBackoffUntil = 0;
+    this.embeddingFailureStreak = 0;
+    this.queryVectorCache.clear();
     this.scheduleEmbedding();
+  }
+
+  /** Whether embedding calls are currently in a backoff window after a recent failure. */
+  private embeddingPaused(): boolean {
+    return Date.now() < this.embeddingBackoffUntil;
+  }
+
+  private noteEmbeddingFailure(provider: Provider, embeddingModel: string | null, error: unknown): void {
+    // Ignore a failure from a provider/model that has since been reconfigured.
+    if (this.provider !== provider || this.embeddingModel !== embeddingModel) return;
+    this.embeddingFailureStreak += 1;
+    const delay = Math.min(EMBED_BACKOFF_MAX_MS, EMBED_BACKOFF_BASE_MS * 2 ** (this.embeddingFailureStreak - 1));
+    this.embeddingBackoffUntil = Date.now() + delay;
+    process.stderr.write(
+      `Boucle search: embedding call failed (attempt ${this.embeddingFailureStreak}), ` +
+        `backing off ${Math.round(delay / 1000)}s: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+
+  private noteEmbeddingSuccess(): void {
+    this.embeddingFailureStreak = 0;
+    this.embeddingBackoffUntil = 0;
+  }
+
+  /** Embed a query string, reusing a cached vector so an as-you-type search does not re-embed. */
+  private async embedQuery(query: string): Promise<number[] | null> {
+    const key = `${this.embeddingModel ?? ""} ${query}`;
+    const cached = this.queryVectorCache.get(key);
+    if (cached) return cached;
+    const [vector] = await this.provider.embed([query]);
+    if (!vector) return null;
+    if (this.queryVectorCache.size >= QUERY_VECTOR_CACHE_MAX) {
+      const oldest = this.queryVectorCache.keys().next().value;
+      if (oldest !== undefined) this.queryVectorCache.delete(oldest);
+    }
+    this.queryVectorCache.set(key, vector);
+    return vector;
   }
 
   private initSchema(): void {
@@ -307,12 +354,14 @@ export class BrainSearch implements SearchIndexer {
   }
 
   private scheduleEmbedding(): void {
-    if (this.bootstrapping || this.embeddingDisabled || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return;
+    if (this.bootstrapping || !this.provider.isConfigured() || !this.provider.supportsEmbeddings()) return;
     if (this.embeddingTimer) clearTimeout(this.embeddingTimer);
+    // When backed off, arm the retry for when the window expires instead of dropping it.
+    const delay = Math.max(250, this.embeddingBackoffUntil - Date.now());
     this.embeddingTimer = setTimeout(() => {
       this.embeddingTimer = null;
       void this.embedMissing();
-    }, 250);
+    }, delay);
     if (typeof this.embeddingTimer.unref === "function") this.embeddingTimer.unref();
   }
 
@@ -332,7 +381,7 @@ export class BrainSearch implements SearchIndexer {
   private async embedMissingOnce(): Promise<void> {
     const provider = this.provider;
     const embeddingModel = this.embeddingModel;
-    if (this.embeddingDisabled || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return;
+    if (this.embeddingPaused() || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return;
     const rows = this.db
       .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
           d.project_id AS projectId,d.url,d.content_hash AS contentHash
@@ -352,8 +401,10 @@ export class BrainSearch implements SearchIndexer {
             .run(row.source, row.docId, row.chunkId, row.contentHash, embeddingModel, vectorBlob(vectors[index] ?? []));
         });
       }
-    } catch {
-      if (this.provider === provider && this.embeddingModel === embeddingModel) this.embeddingDisabled = true;
+      this.noteEmbeddingSuccess();
+    } catch (error) {
+      this.noteEmbeddingFailure(provider, embeddingModel, error);
+      this.scheduleEmbedding();
     }
   }
 
@@ -431,10 +482,11 @@ export class BrainSearch implements SearchIndexer {
   private async vectorSearch(query: string): Promise<RankedDocument[]> {
     const provider = this.provider;
     const embeddingModel = this.embeddingModel;
-    if (this.embeddingDisabled || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return [];
+    if (this.embeddingPaused() || !embeddingModel || !provider.isConfigured() || !provider.supportsEmbeddings()) return [];
     try {
-      const [queryVector] = await provider.embed([query]);
+      const queryVector = await this.embedQuery(query);
       if (!queryVector) return [];
+      this.noteEmbeddingSuccess();
       const rows = this.db
         .prepare(`SELECT d.source,d.doc_id AS docId,d.chunk_id AS chunkId,d.title,d.content,
             d.project_id AS projectId,d.url,d.content_hash AS contentHash,e.embedding
@@ -446,8 +498,8 @@ export class BrainSearch implements SearchIndexer {
         .map((row) => ({ ...row, snippet: firstMatchingLine(row.content, query), similarity: cosine(queryVector, blobVector(row.embedding)) }))
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, 100);
-    } catch {
-      if (this.provider === provider && this.embeddingModel === embeddingModel) this.embeddingDisabled = true;
+    } catch (error) {
+      this.noteEmbeddingFailure(provider, embeddingModel, error);
       return [];
     }
   }

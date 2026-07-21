@@ -46,7 +46,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("authorization", `Bearer ${apiKey()}`);
   headers.set("content-type", "application/json");
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  // A hung upstream must fail the call rather than stall the loop.
+  const signal = init?.signal ?? AbortSignal.timeout(60_000);
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers, signal });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(`Mistral API failed (${response.status}): ${detail.slice(0, 300)}`);

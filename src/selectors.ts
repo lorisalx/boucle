@@ -5,7 +5,7 @@
 // or provider registries — which would form a cycle, since those import settings.ts.
 // runner.ts / providers register their names here as they register the real thing.
 
-const runnerNames = new Set<string>(["vibe", "codex", "claude"]);
+const runnerNames = new Set<string>(["vibe", "codex", "claude", "t3code"]);
 const providerNames = new Set<string>(["mistral", "openai"]);
 
 export function registerRunnerName(name: string): void {

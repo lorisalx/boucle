@@ -34,6 +34,18 @@ export interface SpawnT3CodeInput {
   readonly modelSelection?: ModelSelection;
 }
 
+export interface ContinueT3CodeInput {
+  readonly threadId: string;
+  readonly title: string;
+  readonly prompt: string;
+  /**
+   * Reasserted on every turn. A thread keeps whatever model it was created with,
+   * so without this a loop silently drifts off its configured model the moment
+   * the thread is switched by hand in t3code.
+   */
+  readonly modelSelection?: ModelSelection;
+}
+
 const T3CODE_FALLBACK_ENVIRONMENT_ID = "primary";
 
 /** Shipped t3code default for new chats. Keep this explicit so upgrades are intentional. */
@@ -105,6 +117,10 @@ function matchProject(projects: readonly SnapshotProject[], target: string): Sna
     ?? null;
 }
 
+function threadDeepLink(baseUrl: string, environmentId: string, threadId: string): string {
+  return `${baseUrl}/${environmentId}/${threadId}`;
+}
+
 async function dispatch(cfg: T3CodeConfig, command: unknown): Promise<void> {
   const response = await fetchT3Code(cfg, "/api/orchestration/dispatch", {
     method: "POST",
@@ -163,6 +179,34 @@ export async function spawnT3CodeChat(cfg: T3CodeConfig, input: SpawnT3CodeInput
   return {
     threadId,
     project: project.title,
-    openUrl: `${cfg.baseUrl}/${environmentId}/${threadId}`,
+    openUrl: threadDeepLink(cfg.baseUrl, environmentId, threadId),
+  };
+}
+
+/**
+ * Post another turn into an existing t3code thread. Loops reuse their thread so a
+ * recurring loop reads as one continuing conversation instead of a new chat per run.
+ */
+export async function continueT3CodeChat(
+  cfg: T3CodeConfig,
+  input: ContinueT3CodeInput,
+): Promise<T3CodeSpawnResult> {
+  await dispatch(cfg, {
+    type: "thread.turn.start",
+    commandId: randomUUID(),
+    threadId: input.threadId,
+    message: { messageId: randomUUID(), role: "user", text: input.prompt, attachments: [] },
+    ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
+    titleSeed: input.title,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    createdAt: new Date().toISOString(),
+  });
+
+  const environmentId = await fetchT3CodeEnvironmentId(cfg);
+  return {
+    threadId: input.threadId,
+    project: "",
+    openUrl: threadDeepLink(cfg.baseUrl, environmentId, input.threadId),
   };
 }

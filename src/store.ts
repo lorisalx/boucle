@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { resolveBrainDir } from "./config.ts";
 import { emit } from "./extensions/events.ts";
 import { getIdentity, type Identity } from "./identity.ts";
+import { normalizeProjectId } from "./project-id.ts";
 import { isKnownRunnerName, knownRunnerNames } from "./selectors.ts";
 import type { RunnerName } from "./settings.ts";
 
@@ -920,12 +921,14 @@ export class BoucleStore {
       CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);
       CREATE TABLE IF NOT EXISTS ticket_events (
         event_id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, kind TEXT NOT NULL,
-        summary TEXT NOT NULL, created_at TEXT NOT NULL
+        summary TEXT NOT NULL, to_status TEXT, created_at TEXT NOT NULL,
+        FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_ticket_events_ticket ON ticket_events(ticket_id, created_at);
       CREATE TABLE IF NOT EXISTS ticket_source_events (
         event_id TEXT PRIMARY KEY, source TEXT NOT NULL, source_ref TEXT NOT NULL,
-        dedupe_key TEXT NOT NULL UNIQUE, ticket_id TEXT, decision TEXT NOT NULL, seen_at TEXT NOT NULL
+        dedupe_key TEXT NOT NULL UNIQUE, ticket_id TEXT, decision TEXT NOT NULL, seen_at TEXT NOT NULL,
+        FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE SET NULL
       );
       CREATE TABLE IF NOT EXISTS boucle_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS loops (
@@ -966,8 +969,28 @@ export class BoucleStore {
     if (resolvedIdentity.demoMode) this.seedTickets();
   }
 
-  /** Additive column migrations for DBs created before a column existed. */
+  /** Run a function inside an IMMEDIATE transaction so a partial failure never half-applies. */
+  private tx<T>(fn: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** The migration level this build knows how to reach; bump when adding a step below. */
+  private static readonly SCHEMA_VERSION = 1;
+
+  /** Additive column migrations for DBs created before a column existed. Transactional and versioned. */
   private migrate(): void {
+    this.tx(() => this.migrateSteps());
+  }
+
+  private migrateSteps(): void {
     const cols = this.db.prepare(`PRAGMA table_info(tickets)`).all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "work_ref")) {
       this.db.exec(`ALTER TABLE tickets ADD COLUMN work_ref TEXT`);
@@ -1018,17 +1041,49 @@ export class BoucleStore {
       // Every run recorded before multi-runner support came from Vibe.
       this.db.exec(`UPDATE loop_runs SET runner = 'vibe' WHERE runner IS NULL`);
     }
-    // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
-    this.db.exec(`
-      UPDATE loops SET model = 'devstral-2512'
-      WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
-        AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
-      UPDATE loops SET interval_minutes = 60
-      WHERE name = 'Meetings' AND interval_minutes < 60;
-      UPDATE loops
-      SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
-      WHERE thread_id IS NOT NULL AND COALESCE(thread_project, '') != 'vibe';
-    `);
+    const eventCols = this.db.prepare(`PRAGMA table_info(ticket_events)`).all() as Array<{ name: string }>;
+    if (!eventCols.some((c) => c.name === "to_status")) {
+      this.db.exec(`ALTER TABLE ticket_events ADD COLUMN to_status TEXT`);
+    }
+
+    // Versioned one-off fixups. Gated on user_version so a long-lived instance runs them exactly
+    // once instead of replaying on every boot. t3code loops are still excluded from the resets:
+    //   - the model reset would stomp a deliberate model choice (a t3code loop names its agent
+    //     through `model`, e.g. claude-sonnet-5);
+    //   - the thread reset would drop the loop's t3code thread, so each run would open a new chat
+    //     instead of continuing the existing conversation.
+    const userVersion = (this.db.prepare(`PRAGMA user_version`).get() as { user_version: number }).user_version;
+    if (userVersion < 1) {
+      // Phase 1 shipped these seeded loops with legacy runner models and one short interval.
+      this.db.exec(`
+        UPDATE loops SET model = 'devstral-2512'
+        WHERE name IN ('Chief of staff', 'Meetings', 'Project timelines')
+          AND COALESCE(runner, '') != 't3code'
+          AND (model IS NULL OR model LIKE 'gpt-%' OR model LIKE 'claude-%');
+        UPDATE loops SET interval_minutes = 60
+        WHERE name = 'Meetings' AND interval_minutes < 60;
+        UPDATE loops
+        SET thread_id = NULL, thread_project = NULL, thread_open_url = NULL
+        WHERE thread_id IS NOT NULL
+          AND COALESCE(thread_project, '') != 'vibe'
+          AND COALESCE(runner, '') != 't3code';
+      `);
+    }
+    this.db.exec(`PRAGMA user_version = ${BoucleStore.SCHEMA_VERSION}`);
+  }
+
+  /**
+   * How many runs this loop has already sent into one agent session.
+   *
+   * A recurring loop that reuses its session forever grows the conversation without
+   * bound until the provider rejects the prompt outright — and because a dispatch
+   * still succeeds, the loop keeps reporting `ok` while doing nothing. The scheduler
+   * uses this to retire a session before it reaches that point.
+   */
+  countRunsForSession(loopId: string, sessionId: string): number {
+    return (this.db
+      .prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE loop_id = ? AND session_id = ?`)
+      .get(loopId, sessionId) as { n: number }).n;
   }
 
   createConversation(input: CreateConversationInput): ConversationRecord {
@@ -1163,10 +1218,16 @@ export class BoucleStore {
       .run(now);
   }
 
-  private recordEvent(ticketId: string, kind: TicketEventKind, summary: string, at: string): void {
+  private recordEvent(
+    ticketId: string,
+    kind: TicketEventKind,
+    summary: string,
+    at: string,
+    toStatus: string | null = null,
+  ): void {
     this.db
-      .prepare(`INSERT INTO ticket_events (event_id, ticket_id, kind, summary, created_at) VALUES (?,?,?,?,?)`)
-      .run(randomUUID(), ticketId, kind, summary, at);
+      .prepare(`INSERT INTO ticket_events (event_id, ticket_id, kind, summary, to_status, created_at) VALUES (?,?,?,?,?,?)`)
+      .run(randomUUID(), ticketId, kind, summary, toStatus, at);
     this.searchIndexer?.reindexTicket(ticketId);
   }
 
@@ -1223,7 +1284,9 @@ export class BoucleStore {
       kind: existing?.kind ?? input.kind ?? "task",
       bucket: existing ? existing.bucket : (input.bucket ?? bucketFromPriority(priority)),
       score: 0,
-      project: existing ? existing.project : (input.project ?? null),
+      // Normalized on the way in: a path or a stray-cased variant stored verbatim
+      // would never match its brain page, splitting the project's history in two.
+      project: existing ? existing.project : normalizeProjectId(input.project),
       source: input.source,
       sourceRef: input.sourceRef ?? existing?.sourceRef ?? null,
       permalink: input.permalink ?? existing?.permalink ?? null,
@@ -1312,7 +1375,7 @@ export class BoucleStore {
     this.writeTicket(updated);
     const note = toStatus === "snoozed" && snooze ? ` (until ${snooze})` : "";
     const why = reason && reason.trim().length > 0 ? ` — ${reason.trim()}` : "";
-    this.recordEvent(ticketId, "status", `${prev.status} → ${toStatus}${note}${why}`, now.toISOString());
+    this.recordEvent(ticketId, "status", `${prev.status} → ${toStatus}${note}${why}`, now.toISOString(), toStatus);
     if (ref !== prev.workRef && ref) this.recordEvent(ticketId, "chat", `Linked work: ${ref}`, now.toISOString());
     emit("ticket.transitioned", { ticket: updated, from: prev.status, to: toStatus });
     return updated;
@@ -1330,7 +1393,7 @@ export class BoucleStore {
       priority: input.priority ?? prev.priority,
       kind: input.kind ?? prev.kind,
       bucket: input.bucket !== undefined ? input.bucket : prev.bucket,
-      project: input.project !== undefined ? input.project : prev.project,
+      project: input.project !== undefined ? normalizeProjectId(input.project) : prev.project,
       needs: input.needs ?? prev.needs,
       effort: input.effort !== undefined ? input.effort : prev.effort,
       dueAt: input.dueAt !== undefined ? input.dueAt : prev.dueAt,
@@ -1377,7 +1440,7 @@ export class BoucleStore {
       const woke: Ticket = { ...t, status: "next", snoozedUntil: null, updatedAt: nowIso };
       woke.score = computeScore(woke, now.getTime());
       this.writeTicket(woke);
-      this.recordEvent(t.ticketId, "status", `snoozed → next (woke up)`, nowIso);
+      this.recordEvent(t.ticketId, "status", `snoozed → next (woke up)`, nowIso, "next");
     }
     return due.length;
   }
@@ -1434,9 +1497,13 @@ export class BoucleStore {
     const since = new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
     return this.db
       .prepare(
+        // Prefer the structured to_status; fall back to the legacy prose match for rows written
+        // before that column existed, so historical activity keeps rendering.
         `SELECT substr(e.created_at, 1, 10) AS day, t.project AS project, COUNT(*) AS count
          FROM ticket_events e JOIN tickets t ON t.ticket_id = e.ticket_id
-         WHERE e.kind = 'status' AND e.summary LIKE '%→ done%' AND e.created_at >= ?
+         WHERE e.kind = 'status'
+           AND (e.to_status = 'done' OR (e.to_status IS NULL AND e.summary LIKE '%→ done%'))
+           AND e.created_at >= ?
          GROUP BY day, project ORDER BY day ASC`,
       )
       .all(since) as Array<{ day: string; project: string | null; count: number }>;
@@ -1638,20 +1705,35 @@ export class BoucleStore {
     return rows;
   }
 
-  getLoopCostSummary(warnThreshold = 10, stopThreshold = 30): LoopCostSummary {
+  getLoopCostSummary(warnThreshold = 10, stopThreshold = 30, windowDays = 30, reserveUnitUsd = 0): LoopCostSummary {
     // Vibe reports per-invocation cost, so loop, capture, and enrich rows are totaled here.
     // Conversations API responses do not expose billed cost; estimating browser chat,
+    // NOTE: see countRunsForSession below for the other unbounded-growth guard.
     // describe, or brief spend would invent numbers, so those calls are excluded.
-    const row = this.db.prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs`).get() as { total: number };
-    const totalCostUsd = row.total;
+    //
+    // The cap is a rolling window, not a lifetime sum: an always-on instance can never wedge
+    // itself permanently on cumulative history — spend inside the window ages out as time passes.
+    // In-flight runs (still 'running', no recorded cost yet) reserve their max possible spend so
+    // several concurrent starts cannot all slip under the cap.
+    const windowStart = new Date(Date.now() - Math.max(1, windowDays) * DAY_MS).toISOString();
+    const recorded = (this.db
+      .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS total FROM loop_runs WHERE started_at >= ?`)
+      .get(windowStart) as { total: number }).total;
+    const running = (this.db
+      .prepare(`SELECT COUNT(*) AS n FROM loop_runs WHERE status = 'running' AND started_at >= ?`)
+      .get(windowStart) as { n: number }).n;
+    const reserved = running * Math.max(0, reserveUnitUsd);
+    const projected = recorded + reserved;
+    const window = windowDays === 1 ? "today" : `the last ${windowDays} days`;
     return {
-      totalCostUsd,
-      warning: totalCostUsd >= stopThreshold
-        ? `Agent budget exhausted ($${totalCostUsd.toFixed(2)} recorded; hard stop at $${stopThreshold.toFixed(2)}).`
-        : totalCostUsd >= warnThreshold
-          ? `Agent spend has crossed the $${warnThreshold.toFixed(2)} warning threshold ($${totalCostUsd.toFixed(2)} recorded).`
+      totalCostUsd: recorded,
+      warning: projected >= stopThreshold
+        ? `Agent budget exhausted for ${window} ($${recorded.toFixed(2)} recorded` +
+          `${reserved > 0 ? ` + $${reserved.toFixed(2)} reserved for in-flight runs` : ""}; hard stop at $${stopThreshold.toFixed(2)}).`
+        : projected >= warnThreshold
+          ? `Agent spend has crossed the $${warnThreshold.toFixed(2)} warning threshold for ${window} ($${recorded.toFixed(2)} recorded).`
           : null,
-      blocked: totalCostUsd >= stopThreshold,
+      blocked: projected >= stopThreshold,
     };
   }
 

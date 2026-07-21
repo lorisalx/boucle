@@ -94,6 +94,7 @@ export interface ExtensionSettingSpec {
   label?: string;
   env?: string;
   placeholder?: string;
+  secret?: boolean;
 }
 
 export interface ExtensionPage {

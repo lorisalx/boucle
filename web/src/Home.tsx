@@ -149,9 +149,11 @@ function fmtDay(iso: string): string {
 function ActivityGrid({
   rows,
   activity,
+  stalled,
 }: {
   rows: Array<{ id: string | null; label: string }>;
   activity: ActivityRow[];
+  stalled: Array<{ projectId: string; title: string; openTicketCount: number }>;
 }) {
   const days = useMemo(() => lastDays(ACTIVITY_DAYS), []);
   const byKey = useMemo(() => {
@@ -213,6 +215,16 @@ function ActivityGrid({
         </span>
         <span />
       </div>
+      {stalled.length > 0 ? (
+        <p className="mt-2.5 border-t border-border pt-2 text-[11px] text-dim">
+          <span className="font-medium text-muted">
+            Stalled · {stalled.length} {stalled.length === 1 ? "project" : "projects"}
+          </span>
+          {" — "}
+          {stalled.reduce((n, p) => n + p.openTicketCount, 0)} open, nothing resolved in {ACTIVITY_DAYS}d:{" "}
+          {stalled.map((p) => p.title).join(", ")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -371,7 +383,7 @@ function ProjectCard({
         ) : null}
       </div>
 
-      <div className="mt-3 flex flex-col gap-0.5">
+      <div className="mt-3 mb-3 flex flex-col gap-0.5">
         {active.map((item) => (
           <ItemRow key={item.ticketId} item={item} actions={actions} />
         ))}
@@ -381,21 +393,34 @@ function ProjectCard({
           : null}
       </div>
 
-      <div className="mt-3 flex items-center gap-3 border-t border-border pt-2.5">
-        <button
-          onClick={() => openCapture(projectId)}
-          className="inline-flex items-center gap-1 text-xs text-dim hover:text-fg"
-        >
-          <PlusIcon className="size-3.5" /> item
-        </button>
-        {dormant.length > 0 ? (
+      {/*
+        Pinned to the card's bottom edge (mt-auto) so the affordance lands in the same
+        place on every card in a row, however many items each holds. The negative inline
+        margin pulls the rule out through the card's padding so it meets both borders,
+        with px-4 putting the content back on the card's text column.
+      */}
+      <div className="-mx-4 mt-auto border-t border-border px-4 pt-2.5">
+        <div className="flex items-center gap-3">
+          {/*
+            Shaped like an ItemRow on purpose: same px-2 inset, gap and hover box, so the
+            plus lines up with the item icons above it and the whole row is a target
+            rather than the few pixels of the label.
+          */}
           <button
-            onClick={() => setShowDormant((v) => !v)}
-            className="ml-auto text-[11px] text-dim hover:text-muted"
+            onClick={() => openCapture(projectId)}
+            className="flex min-h-[34px] flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-dim hover:bg-fg/[0.04] hover:text-fg"
           >
-            {showDormant ? "▾" : "▸"} {dormant.length} sleeping
+            <PlusIcon className="size-3.5 shrink-0" /> item
           </button>
-        ) : null}
+          {dormant.length > 0 ? (
+            <button
+              onClick={() => setShowDormant((v) => !v)}
+              className="shrink-0 text-[11px] text-dim hover:text-muted"
+            >
+              {showDormant ? "▾" : "▸"} {dormant.length} sleeping
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -545,11 +570,17 @@ export function Home() {
     [board, misc],
   );
 
-  // The grid only rows out the projects that are truly alive (open items, or
-  // something resolved in the window); everything else folds into "Misc & other".
+  // The grid answers "what is moving", so a project earns a row only by resolving
+  // something in the window. Having open work is not movement — a project with open
+  // items and nothing resolved is stalled, and it gets called out under the grid
+  // instead of occupying a row of empty cells. Everything else folds into "Misc & other".
   const activeInWindow = useMemo(() => new Set(activity.map((a) => a.project ?? "")), [activity]);
   const gridProjects = useMemo(
-    () => board.filter((p) => p.openTicketCount > 0 || activeInWindow.has(p.projectId)),
+    () => board.filter((p) => activeInWindow.has(p.projectId)),
+    [board, activeInWindow],
+  );
+  const stalledProjects = useMemo(
+    () => board.filter((p) => p.openTicketCount > 0 && !activeInWindow.has(p.projectId)),
     [board, activeInWindow],
   );
   const activityRows = useMemo(
@@ -665,7 +696,7 @@ export function Home() {
 
       {activity.length > 0 ? (
         <div className="mb-4">
-          <ActivityGrid rows={activityRows} activity={gridActivity} />
+          <ActivityGrid rows={activityRows} activity={gridActivity} stalled={stalledProjects} />
         </div>
       ) : null}
 

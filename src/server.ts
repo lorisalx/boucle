@@ -5,15 +5,17 @@
  *
  * The web polls the API for live-ish updates; mutations are synchronous.
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { getCookie, setCookie } from "hono/cookie";
+import { z } from "zod";
 
-import { BOUCLE_PORT, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
+import { BOUCLE_HOST, BOUCLE_PORT, operatorAuthToken, spawnedChatGuardrails, isProviderConfigured, resolveBrainDir, resolveDbPath } from "./config.ts";
 import { emit } from "./extensions/events.ts";
 import {
   loadExtensions,
@@ -47,6 +49,7 @@ import {
 } from "./chat.ts";
 import { getT3CodeConfig, spawnT3CodeChat } from "./t3code.ts";
 import { inferCaptureKind } from "./capture-kind.ts";
+import { normalizeProjectId } from "./project-id.ts";
 import {
   addTimelineEntry,
   getBacklinks,
@@ -90,6 +93,52 @@ initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
 const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
+
+/** Length-safe constant-time string compare, so token checks do not leak bytes via timing. */
+function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+const AUTH_COOKIE = "boucle_auth";
+
+/** A request is authorized when auth is disabled, or it presents the operator token (header or cookie). */
+function authorized(c: Context): boolean {
+  const token = operatorAuthToken();
+  if (!token) return true;
+  const header = c.req.header("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (bearer && safeEqual(bearer, token)) return true;
+  const cookie = getCookie(c, AUTH_COOKIE) ?? "";
+  return cookie.length > 0 && safeEqual(cookie, token);
+}
+
+// Opt-in auth over the whole HTTP API. No-op (open) when BOUCLE_AUTH_TOKEN is unset, so the
+// localhost demo is unchanged; a hard gate once an operator sets the token. Registered before
+// the routes so it wraps every /api/* handler, including /api/mcp-info.
+app.use("/api/*", async (c, next) => {
+  if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
+  await next();
+});
+
+// Exchange the operator token for an httpOnly session cookie, so a browser can authenticate once.
+app.post("/auth", async (c) => {
+  const token = operatorAuthToken();
+  if (!token) return c.json({ ok: true, authRequired: false });
+  const body = (await c.req.json().catch(() => ({}))) as { token?: string };
+  if (typeof body.token !== "string" || !safeEqual(body.token, token)) {
+    return c.json({ error: "invalid token" }, 401);
+  }
+  setCookie(c, AUTH_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return c.json({ ok: true });
+});
 
 app.get("/api/health", (c) => c.json({ ok: true }));
 
@@ -241,7 +290,42 @@ app.get("/api/tickets/:id", (c) => {
   });
 });
 
-app.post("/api/tickets/upsert", async (c) => c.json(store.upsert(await c.req.json())));
+/** The MCP tools reject a malformed project slug; the HTTP door must agree. */
+function badProject(project: unknown): boolean {
+  return typeof project === "string" && project.trim() !== "" && normalizeProjectId(project) === null;
+}
+
+// Validate the upsert body before it reaches the store, matching the guard the other
+// mutating routes already apply. Unknown keys are stripped rather than trusted.
+const upsertSchema = z.object({
+  dedupeKey: z.string().min(1),
+  title: z.string().min(1),
+  source: z.enum(["slack", "gmail", "gcal", "manual"]),
+  body: z.string().optional(),
+  priority: z.enum(["urgent", "high", "normal", "low"]).optional(),
+  kind: z.enum(["task", "idea", "conv", "scope"]).optional(),
+  bucket: z.enum(["urgent", "to_do_next", "cool_to_do", "maybe_one_day"]).nullish(),
+  project: z.string().nullish(),
+  sourceRef: z.string().nullish(),
+  permalink: z.string().nullish(),
+  requester: z.string().nullish(),
+  needs: z.enum(["claude", "codex", "human", "none"]).optional(),
+  effort: z.enum(["xs", "s", "m", "l", "xl"]).nullish(),
+  dueAt: z.string().nullish(),
+  nextAction: z.string().nullish(),
+  threadId: z.string().nullish(),
+  t3codeThreadId: z.string().nullish(),
+  t3codeOpenUrl: z.string().nullish(),
+  createdBy: z.enum(["chief", "human"]).optional(),
+});
+
+app.post("/api/tickets/upsert", async (c) => {
+  const parsed = upsertSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid ticket", detail: parsed.error.issues }, 400);
+  // The schema types `project` as a string; only the slug rules can say it is a real one.
+  if (badProject(parsed.data.project)) return c.json({ error: "project must be a valid project slug" }, 400);
+  return c.json(store.upsert(parsed.data));
+});
 
 app.post("/api/tickets/:id/transition", async (c) => {
   const body = (await c.req.json()) as {
@@ -263,6 +347,7 @@ app.post("/api/tickets/:id/transition", async (c) => {
 
 app.post("/api/tickets/:id/set", async (c) => {
   const body = (await c.req.json()) as Omit<SetTicketFieldsInput, "ticketId">;
+  if (badProject(body.project)) return c.json({ error: "project must be a valid project slug" }, 400);
   return c.json(store.setFields({ ...body, ticketId: c.req.param("id") }));
 });
 
@@ -842,7 +927,9 @@ app.post("/api/chats/:conversationId/messages", async (c) => {
 // MCP — BOUCLE's tools for Codex/Claude over HTTP (bearer-gated, one server per request).
 app.all("/mcp", async (c) => {
   const token = getMcpToken(store);
-  if (c.req.header("authorization") !== `Bearer ${token}`) {
+  const header = c.req.header("authorization") ?? "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!safeEqual(bearer, token)) {
     return c.json({ error: "unauthorized" }, 401);
   }
   const mcp = createBoucleMcpServer(store);
@@ -896,9 +983,9 @@ app.get("/favicon.svg", serveStatic({ path: "./web/dist/favicon.svg" }));
 app.get("/", serveStatic({ path: "./web/dist/index.html" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
-serve({ fetch: app.fetch, port: BOUCLE_PORT }, (info) => {
+serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE_HOST }, (info) => {
   scheduler.start();
   void search.bootstrap().catch(() => {});
   emit("server.started", { port: info.port });
-  process.stdout.write(`boucle server on http://localhost:${info.port}\n`);
+  process.stdout.write(`boucle server on http://${info.address}:${info.port}\n`);
 });

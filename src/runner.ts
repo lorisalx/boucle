@@ -4,6 +4,7 @@ import { ClaudeRunner } from "./claude.ts";
 import { CodexRunner } from "./codex.ts";
 import { registerRunnerName, unregisterRunnerName } from "./selectors.ts";
 import { resolveRunnerSetting, type RunnerName, type SettingsStore } from "./settings.ts";
+import { T3CodeRunner } from "./t3code-runner.ts";
 import { execVibe } from "./vibe.ts";
 import { readVibeTranscript } from "./vibe-transcript.ts";
 
@@ -11,6 +12,8 @@ export interface AgentExecSpec {
   readonly prompt: string;
   readonly scope: string;
   readonly model: string | null;
+  /** Human-readable label for runners that surface the work as a named conversation. */
+  readonly title?: string | null;
   readonly mcpUrl: string;
   readonly mcpToken: string;
   readonly dbPath: string;
@@ -26,6 +29,8 @@ export interface AgentExecResult {
   readonly output: string;
   readonly code: number | null;
   readonly timedOut: boolean;
+  /** Deep link to the conversation, for runners that host it outside Boucle. */
+  readonly openUrl?: string | null;
 }
 
 export interface TranscriptEntry {
@@ -88,7 +93,8 @@ const warnedMissing = new Set<string>();
 
 /** Extensions add runners to the live registry (also registers the name for settings validation). */
 export function registerRunner(runner: AgentRunner): () => void {
-  if (runners.has(runner.name)) {
+  // "t3code" is resolved per call below, so it never sits in the map — reserve it explicitly.
+  if (runner.name === "t3code" || runners.has(runner.name)) {
     throw new Error(`runner already registered: ${runner.name}`);
   }
   runners.set(runner.name, runner);
@@ -102,6 +108,8 @@ export function registerRunner(runner: AgentRunner): () => void {
 
 export function getAgentRunner(override: RunnerName | null = null, store: SettingsStore | null = null): AgentRunner {
   const wanted = override ?? resolveRunnerSetting(store).value;
+  // t3code resolves per call: it needs the store to read its URL and token.
+  if (wanted === "t3code") return new T3CodeRunner(store ?? { getMeta: () => null });
   const runner = runners.get(wanted);
   if (runner) return runner;
   // A meta-configured runner from a since-removed extension degrades to the default

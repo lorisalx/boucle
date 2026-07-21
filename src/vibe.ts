@@ -4,6 +4,8 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { unattendedFullAccess } from "./config.ts";
+
 const DEFAULT_TIMEOUT_MIN = Number.parseInt(process.env.BOUCLE_LOOP_TIMEOUT_MIN ?? "12", 10);
 const MAX_CAPTURE_CHARS = 16_000;
 
@@ -162,8 +164,10 @@ export async function execVibe(spec: VibeExecSpec, options: VibeExecOptions): Pr
     maxPrice(),
     "--workdir",
     options.workdir,
-    "--trust",
   ];
+  // --trust drops the sandbox and grants full host access. The prompt is store-sourced, so this
+  // stays opt-in; by default the run keeps its sandbox and reaches Boucle only via scoped MCP tools.
+  if (unattendedFullAccess()) args.push("--trust");
   if (spec.sessionId) args.push("--resume", spec.sessionId);
 
   const startedMs = Date.now();

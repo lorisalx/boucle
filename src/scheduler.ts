@@ -19,6 +19,16 @@ function budgetThreshold(name: string, fallback: number): number {
 const BUDGET_WARN = budgetThreshold("BOUCLE_AGENT_BUDGET_WARN", 10);
 const BUDGET_STOP = budgetThreshold("BOUCLE_AGENT_BUDGET_STOP", 30);
 
+/**
+ * Runs a loop may send into one agent session before it is retired for a fresh one.
+ * 20 keeps a few days of continuity for an hourly loop and a few weeks for a daily
+ * one, while staying far enough from a context window that no run is refused.
+ */
+const MAX_SESSION_RUNS = budgetThreshold("BOUCLE_LOOP_SESSION_MAX_RUNS", 20);
+// The budget is a rolling window (default ~monthly), so a long-lived instance frees up spend over
+// time instead of bricking on cumulative history.
+const BUDGET_WINDOW_DAYS = Math.max(1, Math.trunc(budgetThreshold("BOUCLE_AGENT_BUDGET_WINDOW_DAYS", 30)));
+
 function positiveNumber(name: string, fallback: number): number {
   const value = Number.parseFloat(process.env[name] ?? "");
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -246,7 +256,7 @@ export class LoopScheduler {
             loopId: loop.loopId,
             threadId: res.sessionId,
             threadProject: runner.name,
-            threadOpenUrl: null,
+            threadOpenUrl: res.openUrl ?? null,
           });
         }
         this.store.recordRunFinish(
@@ -298,9 +308,29 @@ export class LoopScheduler {
     return this.execRunner(runner, {
       prompt: buildLoopTurnPrompt(loop, trigger),
       model: loop.model,
-      resumeSessionId: loop.threadProject === runner.name ? loop.threadId : null,
+      title: loop.name,
+      resumeSessionId: this.resumableSessionFor(loop, runner),
       scope: `loops_${loop.loopId}`,
     });
+  }
+
+  /**
+   * The session to continue, or null to start a fresh one.
+   *
+   * A loop reuses its session so a recurring job reads as one conversation, but a
+   * session reused forever grows until the provider refuses the prompt. Worse, the
+   * dispatch still succeeds, so the loop reports `ok` while the agent never runs.
+   * Retiring the session after a bounded number of runs keeps the continuity that
+   * makes the thread readable without letting it grow past a context window.
+   */
+  private resumableSessionFor(loop: Loop, runner: AgentRunner): string | null {
+    if (loop.threadProject !== runner.name || !loop.threadId) return null;
+    const used = this.store.countRunsForSession(loop.loopId, loop.threadId);
+    if (used < MAX_SESSION_RUNS) return loop.threadId;
+    console.warn(
+      `[boucle] loop "${loop.name}": retiring ${runner.name} session after ${used} runs; starting a fresh one.`,
+    );
+    return null;
   }
 
   private runnerFor(override: RunnerName | null): AgentRunner {
@@ -314,7 +344,7 @@ export class LoopScheduler {
 
   private execRunner(
     runner: AgentRunner,
-    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope" | "title">,
   ): Promise<AgentExecResult> {
     return runner.exec({
       ...spec,
@@ -328,7 +358,11 @@ export class LoopScheduler {
   }
 
   getBudgetSummary() {
-    return this.store.getLoopCostSummary(BUDGET_WARN, BUDGET_STOP);
+    // Reserve each in-flight run's max spend against the window, so concurrent starts cannot all
+    // read the same under-cap total and slip through (the reservation reconciles to actual cost
+    // once the run records its finish).
+    const reserveUnit = positiveNumber("BOUCLE_VIBE_MAX_PRICE", 0.25);
+    return this.store.getLoopCostSummary(BUDGET_WARN, BUDGET_STOP, BUDGET_WINDOW_DAYS, reserveUnit);
   }
 
   /** Apply the cumulative hard stop to every agent entry point. */
@@ -346,7 +380,7 @@ export class LoopScheduler {
   /** Store one-shot agent work beside loop runs so its reported cost and session count toward the global budget. */
   private execTracked(
     runner: AgentRunner,
-    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope">,
+    spec: Pick<AgentExecSpec, "prompt" | "model" | "resumeSessionId" | "scope" | "title">,
     trigger: "smart_capture" | "enrich" | "vibe_thread",
   ): Promise<AgentExecResult> {
     const auxiliaryLoopId = `${runner.name}:${trigger}`;
