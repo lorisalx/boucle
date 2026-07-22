@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, FolderIcon, Loader2Icon, MessageSquareTextIcon, SearchIcon } from "lucide-react";
+import { ArrowLeftIcon, FolderIcon, Loader2Icon, MessageSquareTextIcon, PlayIcon, SearchIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { api, type SessionEngine, type SessionSummary, type SessionTranscript } from "./api.ts";
@@ -109,6 +109,24 @@ export function SessionDetail({ engine, sessionId }: { engine: SessionEngine; se
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [transcript, setTranscript] = useState<SessionTranscript | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [continuing, setContinuing] = useState(false);
+
+  async function continueInBoucle() {
+    if (!summary?.cwd) return;
+    setContinuing(true);
+    setError(null);
+    try {
+      const { thread } = await api.threads.create({
+        engine,
+        cwd: summary.cwd,
+        resumeFrom: { engine, sessionId },
+      });
+      navigate(`#/threads/${thread.threadId}`);
+    } catch (cause) {
+      setError(String((cause as Error)?.message ?? cause));
+      setContinuing(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -139,6 +157,14 @@ export function SessionDetail({ engine, sessionId }: { engine: SessionEngine; se
             {summary ? ` · ${formatWhen(summary.updatedAt)}` : ""}
           </p>
         </div>
+        <button
+          onClick={() => void continueInBoucle()}
+          disabled={!summary?.cwd || continuing}
+          className="inline-flex items-center gap-1.5 rounded-full bg-btn px-3 py-1.5 text-xs font-semibold text-btn-fg disabled:opacity-40"
+        >
+          {continuing ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlayIcon className="size-3.5" />}
+          Continue in Boucle
+        </button>
       </header>
 
       <main className="space-y-4 py-6">

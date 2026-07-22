@@ -3,14 +3,16 @@
  *
  *   node src/server.ts   (or: pnpm serve)
  *
- * The web polls the API for live-ish updates; mutations are synchronous.
+ * Most views poll the API; live threads additionally stream over per-thread WebSockets.
  */
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { StreamableHTTPTransport } from "@hono/mcp";
+import { createNodeWebSocket } from "@hono/node-ws";
 import { Hono, type Context } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -71,6 +73,10 @@ import { getAgentRunner } from "./runner.ts";
 import { isKnownRunnerName, knownProviderNames, knownRunnerNames } from "./selectors.ts";
 import { listSessions, readSession, SESSION_ID_RE, type SessionEngine } from "./sessions-index.ts";
 import type { RunnerName } from "./settings.ts";
+import { ClaudeAdapter } from "./threads/claude-adapter.ts";
+import { CodexAdapter } from "./threads/codex-adapter.ts";
+import { ThreadManager } from "./threads/manager.ts";
+import { threadWireEventSchema } from "./threads/wire.ts";
 import {
   CONFIGURABLE_SETTING_KEYS,
   parseSettingsUpdate,
@@ -94,6 +100,8 @@ initBrainGraph(store, search);
 setBrainSearchReindexer(() => search.reindexFiles());
 const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
+const threadManager = new ThreadManager(store, [new ClaudeAdapter(), new CodexAdapter()]);
 
 /** Length-safe constant-time string compare, so token checks do not leak bytes via timing. */
 function safeEqual(a: string, b: string): boolean {
@@ -116,11 +124,21 @@ function authorized(c: Context): boolean {
   return cookie.length > 0 && safeEqual(cookie, token);
 }
 
+/** Browser WebSocket upgrades cannot set Authorization, so additionally accept an explicit query token. */
+function authorizedWebSocket(c: Context): boolean {
+  if (authorized(c)) return true;
+  const token = operatorAuthToken();
+  if (!token) return true;
+  const queryToken = c.req.query("token") ?? "";
+  return queryToken.length > 0 && safeEqual(queryToken, token);
+}
+
 // Opt-in auth over the whole HTTP API. No-op (open) when BOUCLE_AUTH_TOKEN is unset, so the
 // localhost demo is unchanged; a hard gate once an operator sets the token. Registered before
 // the routes so it wraps every /api/* handler, including /api/mcp-info.
 app.use("/api/*", async (c, next) => {
-  if (!authorized(c)) return c.json({ error: "unauthorized" }, 401);
+  const isThreadWebSocket = /^\/api\/threads\/[^/]+\/ws$/.test(c.req.path);
+  if (!(isThreadWebSocket ? authorizedWebSocket(c) : authorized(c))) return c.json({ error: "unauthorized" }, 401);
   await next();
 });
 
@@ -185,6 +203,136 @@ app.get("/api/sessions/:engine/:sessionId", async (c) => {
   const transcript = await readSession(engine, sessionId);
   if (!transcript) return c.json({ error: "session not found" }, 404);
   return c.json({ summary, transcript });
+});
+
+const createThreadBodySchema = z.object({
+  engine: z.enum(["claude", "codex"]),
+  cwd: z.string().trim().min(1).optional(),
+  resumeFrom: z.object({
+    engine: z.enum(["claude", "codex"]),
+    sessionId: z.string().regex(SESSION_ID_RE),
+  }).optional(),
+  settings: z.object({
+    permissionMode: z.enum(["acceptEdits", "bypassPermissions"]).optional(),
+    model: z.string().trim().min(1).optional(),
+  }).optional(),
+});
+const turnBodySchema = z.object({ prompt: z.string().trim().min(1) });
+const requestOutcomeSchema = z.object({ outcome: z.enum(["approve", "deny"]) });
+const THREAD_ID_RE = /^[0-9a-f-]{36}$/i;
+
+app.get("/api/threads", (c) => {
+  const limit = Math.min(500, Math.max(0, Number.parseInt(c.req.query("limit") ?? "100", 10) || 100));
+  return c.json({ threads: store.listThreads(limit) });
+});
+
+app.post("/api/threads", async (c) => {
+  const parsed = createThreadBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid thread input" }, 400);
+  const input = parsed.data;
+  if (input.resumeFrom && input.resumeFrom.engine !== input.engine) {
+    return c.json({ error: "resume engine must match thread engine" }, 400);
+  }
+
+  let title = "";
+  let cwd = input.cwd;
+  let resumeCursor: unknown | null = null;
+  if (input.resumeFrom) {
+    const source = (await listSessions({ engine: input.resumeFrom.engine, limit: Number.MAX_SAFE_INTEGER }))
+      .find((session) => session.sessionId.toLocaleLowerCase() === input.resumeFrom!.sessionId.toLocaleLowerCase());
+    if (!source) return c.json({ error: "session not found" }, 404);
+    title = source.title ?? "";
+    cwd ??= source.cwd ?? undefined;
+    resumeCursor = input.engine === "claude"
+      ? { resume: source.sessionId }
+      : { threadId: source.sessionId };
+  }
+  if (!cwd) return c.json({ error: "cwd required" }, 400);
+  try {
+    cwd = await realpath(cwd);
+    if (!(await stat(cwd)).isDirectory()) return c.json({ error: "cwd must be a directory" }, 400);
+  } catch {
+    return c.json({ error: "cwd does not exist" }, 400);
+  }
+  const thread = store.createThread({ engine: input.engine, cwd, title, resumeCursor, settings: input.settings });
+  return c.json({ thread }, 201);
+});
+
+app.get("/api/threads/:id", (c) => {
+  const id = c.req.param("id");
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  const snapshot = threadManager.snapshot(id);
+  if (!snapshot) return c.json({ error: "thread not found" }, 404);
+  return c.json(snapshot);
+});
+
+app.post("/api/threads/:id/turns", async (c) => {
+  const id = c.req.param("id");
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  const parsed = turnBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "prompt required" }, 400);
+  try {
+    await threadManager.sendTurn(id, parsed.data.prompt);
+    return c.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ error: message }, message === "Thread not found" ? 404 : message.includes("running") ? 409 : 502);
+  }
+});
+
+app.post("/api/threads/:id/interrupt", async (c) => {
+  const id = c.req.param("id");
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  try {
+    await threadManager.interrupt(id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 404);
+  }
+});
+
+app.post("/api/threads/:id/requests/:requestId", async (c) => {
+  const id = c.req.param("id");
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  const parsed = requestOutcomeSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "outcome must be approve or deny" }, 400);
+  try {
+    await threadManager.respond(id, c.req.param("requestId"), parsed.data.outcome);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 409);
+  }
+});
+
+app.delete("/api/threads/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  return await threadManager.delete(id) ? c.json({ ok: true }) : c.json({ error: "thread not found" }, 404);
+});
+
+const threadWebSocket = upgradeWebSocket((c) => {
+  const threadId = c.req.param("id")!;
+  const parsedAfter = Number.parseInt(c.req.query("after") ?? "0", 10);
+  const after = Number.isSafeInteger(parsedAfter) && parsedAfter >= 0 ? parsedAfter : 0;
+  let unsubscribe: (() => void) | undefined;
+  return {
+    onOpen: (_event, ws) => {
+      unsubscribe = threadManager.subscribe(threadId, after, (event) => {
+        ws.send(JSON.stringify(threadWireEventSchema.parse(event)));
+      });
+    },
+    onClose: () => unsubscribe?.(),
+    onError: () => unsubscribe?.(),
+  };
+});
+
+app.get("/api/threads/:id/ws", async (c, next) => {
+  const id = c.req.param("id");
+  if (!authorizedWebSocket(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
+  if (!store.getThread(id)) return c.json({ error: "thread not found" }, 404);
+  const response = await threadWebSocket(c, next);
+  return response ?? c.body(null, 426);
 });
 
 // Status changes write into the gbrain page's frontmatter (the file is the source
@@ -1014,9 +1162,10 @@ app.get("/favicon.svg", serveStatic({ path: "./web/dist/favicon.svg" }));
 app.get("/", serveStatic({ path: "./web/dist/index.html" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
-serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE_HOST }, (info) => {
+const httpServer = serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE_HOST }, (info) => {
   scheduler.start();
   void search.bootstrap().catch(() => {});
   emit("server.started", { port: info.port });
   process.stdout.write(`boucle server on http://${info.address}:${info.port}\n`);
 });
+injectWebSocket(httpServer);

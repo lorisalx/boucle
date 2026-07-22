@@ -208,6 +208,53 @@ export interface SessionSummary {
 
 export type SessionTranscript = Omit<VibeTranscript, "running">;
 
+export type ThreadEngine = "claude" | "codex";
+export type ThreadStatus = "idle" | "running" | "error";
+
+export interface ThreadRecord {
+  threadId: string;
+  engine: ThreadEngine;
+  title: string;
+  cwd: string;
+  status: ThreadStatus;
+  resumeCursor: unknown | null;
+  settings: { permissionMode: "acceptEdits" | "bypassPermissions"; model?: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ThreadMessagePayload {
+  role: "user" | "assistant";
+  content: string;
+  streaming?: boolean;
+}
+
+export interface ThreadActivityPayload {
+  tone: "tool" | "approval" | "error" | "info";
+  kind: string;
+  summary: string;
+  payloadJson?: string;
+  status?: string;
+  requestId?: string;
+}
+
+export type ThreadWireEvent =
+  | { sequence: number; kind: "message"; payload: ThreadMessagePayload }
+  | { sequence: number; kind: "activity"; payload: ThreadActivityPayload };
+
+export type StoredThreadEvent = ThreadWireEvent & {
+  id: number;
+  threadId: string;
+  turnId: string | null;
+  createdAt: string;
+};
+
+export interface ThreadSnapshot {
+  thread: ThreadRecord;
+  events: StoredThreadEvent[];
+  sequence: number;
+}
+
 export type ProjectStatus = "scoping" | "in_progress" | "backlog" | "on_hold" | "done" | "archived";
 
 export interface ProjectSummary {
@@ -462,6 +509,27 @@ export const api = {
       fetch(`/api/sessions/${engine}/${encodeURIComponent(sessionId)}`).then((r) =>
         json<{ summary: SessionSummary; transcript: SessionTranscript }>(r),
       ),
+  },
+  threads: {
+    list: () => fetch("/api/threads").then((r) => json<{ threads: ThreadRecord[] }>(r)),
+    create: (input: {
+      engine: ThreadEngine;
+      cwd?: string;
+      resumeFrom?: { engine: ThreadEngine; sessionId: string };
+      settings?: { permissionMode?: "acceptEdits" | "bypassPermissions"; model?: string };
+    }) =>
+      post("/api/threads", input).then((r) => json<{ thread: ThreadRecord }>(r)),
+    get: (threadId: string) =>
+      fetch(`/api/threads/${encodeURIComponent(threadId)}`).then((r) => json<ThreadSnapshot>(r)),
+    send: (threadId: string, prompt: string) =>
+      post(`/api/threads/${encodeURIComponent(threadId)}/turns`, { prompt }).then((r) => json<{ ok: boolean }>(r)),
+    interrupt: (threadId: string) =>
+      post(`/api/threads/${encodeURIComponent(threadId)}/interrupt`, {}).then((r) => json<{ ok: boolean }>(r)),
+    respond: (threadId: string, requestId: string, outcome: "approve" | "deny") =>
+      post(`/api/threads/${encodeURIComponent(threadId)}/requests/${encodeURIComponent(requestId)}`, { outcome })
+        .then((r) => json<{ ok: boolean }>(r)),
+    remove: (threadId: string) =>
+      fetch(`/api/threads/${encodeURIComponent(threadId)}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
   },
   mcpInfo: () =>
     fetch("/api/mcp-info").then((r) => json<{ url: string; token: string; configToml: string }>(r)),

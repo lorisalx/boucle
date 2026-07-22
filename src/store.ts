@@ -182,6 +182,44 @@ export interface CreateConversationInput {
   instructions: string;
 }
 
+export type ThreadEngine = "claude" | "codex";
+export type ThreadStatus = "idle" | "running" | "error";
+export interface ThreadSettings {
+  permissionMode: "acceptEdits" | "bypassPermissions";
+  model?: string;
+}
+
+export interface ThreadRecord {
+  threadId: string;
+  engine: ThreadEngine;
+  title: string;
+  cwd: string;
+  status: ThreadStatus;
+  resumeCursor: unknown | null;
+  settings: ThreadSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoredThreadEvent {
+  id: number;
+  threadId: string;
+  sequence: number;
+  kind: "message" | "activity";
+  payload: unknown;
+  turnId: string | null;
+  createdAt: string;
+}
+
+export interface CreateThreadInput {
+  threadId?: string;
+  engine: ThreadEngine;
+  title?: string;
+  cwd: string;
+  resumeCursor?: unknown | null;
+  settings?: Partial<ThreadSettings>;
+}
+
 /** Initial bucket for a fresh/back-filled EPIC, derived from its priority. */
 export function bucketFromPriority(priority: TicketPriority): TicketBucket {
   switch (priority) {
@@ -983,7 +1021,7 @@ export class BoucleStore {
   }
 
   /** The migration level this build knows how to reach; bump when adding a step below. */
-  private static readonly SCHEMA_VERSION = 1;
+  private static readonly SCHEMA_VERSION = 2;
 
   /** Additive column migrations for DBs created before a column existed. Transactional and versioned. */
   private migrate(): void {
@@ -1069,7 +1107,174 @@ export class BoucleStore {
           AND COALESCE(runner, '') != 't3code';
       `);
     }
+    if (userVersion < 2) {
+      this.db.exec(`
+        CREATE TABLE threads (
+          thread_id TEXT PRIMARY KEY,
+          engine TEXT NOT NULL CHECK (engine IN ('claude','codex')),
+          title TEXT NOT NULL DEFAULT '',
+          cwd TEXT NOT NULL,
+          status TEXT NOT NULL,
+          resume_cursor TEXT,
+          settings_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE thread_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          thread_id TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          kind TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          turn_id TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+        );
+        CREATE INDEX idx_thread_events ON thread_events(thread_id, sequence);
+      `);
+    }
+    const threadCols = this.db.prepare(`PRAGMA table_info(threads)`).all() as Array<{ name: string }>;
+    if (!threadCols.some((column) => column.name === "settings_json")) {
+      this.db.exec(`ALTER TABLE threads ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'`);
+    }
     this.db.exec(`PRAGMA user_version = ${BoucleStore.SCHEMA_VERSION}`);
+  }
+
+  createThread(input: CreateThreadInput): ThreadRecord {
+    const now = new Date().toISOString();
+    const thread: ThreadRecord = {
+      threadId: input.threadId ?? randomUUID(),
+      engine: input.engine,
+      title: input.title ?? "",
+      cwd: input.cwd,
+      status: "idle",
+      resumeCursor: input.resumeCursor ?? null,
+      settings: {
+        permissionMode: input.settings?.permissionMode ?? "acceptEdits",
+        ...(input.settings?.model?.trim() ? { model: input.settings.model.trim() } : {}),
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.db.prepare(`
+      INSERT INTO threads (thread_id, engine, title, cwd, status, resume_cursor, settings_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      thread.threadId,
+      thread.engine,
+      thread.title,
+      thread.cwd,
+      thread.status,
+      thread.resumeCursor === null ? null : JSON.stringify(thread.resumeCursor),
+      JSON.stringify(thread.settings),
+      thread.createdAt,
+      thread.updatedAt,
+    );
+    return thread;
+  }
+
+  getThread(threadId: string): ThreadRecord | null {
+    const row = this.db.prepare(`
+      SELECT thread_id AS threadId, engine, title, cwd, status,
+             resume_cursor AS resumeCursorJson, settings_json AS settingsJson,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM threads WHERE thread_id = ?
+    `).get(threadId) as {
+      threadId: string; engine: ThreadEngine; title: string; cwd: string; status: ThreadStatus;
+      resumeCursorJson: string | null; settingsJson: string; createdAt: string; updatedAt: string;
+    } | undefined;
+    if (!row) return null;
+    let resumeCursor: unknown | null = null;
+    if (row.resumeCursorJson !== null) {
+      try { resumeCursor = JSON.parse(row.resumeCursorJson); } catch { resumeCursor = null; }
+    }
+    let settings: ThreadSettings = { permissionMode: "acceptEdits" };
+    try {
+      const parsed = JSON.parse(row.settingsJson) as Partial<ThreadSettings>;
+      settings = {
+        permissionMode: parsed.permissionMode === "bypassPermissions" ? "bypassPermissions" : "acceptEdits",
+        ...(typeof parsed.model === "string" && parsed.model.trim() ? { model: parsed.model.trim() } : {}),
+      };
+    } catch { /* Preserve safe defaults for a damaged opaque settings value. */ }
+    const { resumeCursorJson: _resumeCursorJson, settingsJson: _settingsJson, ...thread } = row;
+    return { ...thread, resumeCursor, settings };
+  }
+
+  listThreads(limit = 100): ThreadRecord[] {
+    const ids = this.db.prepare(`SELECT thread_id AS threadId FROM threads ORDER BY updated_at DESC LIMIT ?`)
+      .all(Math.max(0, limit)) as Array<{ threadId: string }>;
+    return ids.map(({ threadId }) => this.getThread(threadId)).filter((thread): thread is ThreadRecord => thread !== null);
+  }
+
+  updateThread(threadId: string, patch: Partial<Pick<ThreadRecord, "title" | "status" | "resumeCursor">>): ThreadRecord | null {
+    const current = this.getThread(threadId);
+    if (!current) return null;
+    const next = {
+      title: patch.title ?? current.title,
+      status: patch.status ?? current.status,
+      resumeCursor: Object.prototype.hasOwnProperty.call(patch, "resumeCursor") ? (patch.resumeCursor ?? null) : current.resumeCursor,
+      updatedAt: new Date().toISOString(),
+    };
+    this.db.prepare(`UPDATE threads SET title = ?, status = ?, resume_cursor = ?, updated_at = ? WHERE thread_id = ?`)
+      .run(next.title, next.status, next.resumeCursor === null ? null : JSON.stringify(next.resumeCursor), next.updatedAt, threadId);
+    return this.getThread(threadId);
+  }
+
+  resetRunningThreads(): void {
+    this.db.prepare(`UPDATE threads SET status = 'idle', updated_at = ? WHERE status = 'running'`)
+      .run(new Date().toISOString());
+  }
+
+  appendThreadEvent(input: {
+    threadId: string;
+    kind: "message" | "activity";
+    payload: unknown;
+    turnId?: string | null;
+    sequence?: number;
+  }): StoredThreadEvent {
+    return this.tx(() => {
+      const sequence = input.sequence ?? ((this.db.prepare(`SELECT COALESCE(MAX(sequence), 0) AS n FROM thread_events WHERE thread_id = ?`)
+        .get(input.threadId) as { n: number }).n + 1);
+      const createdAt = new Date().toISOString();
+      const result = this.db.prepare(`
+        INSERT INTO thread_events (thread_id, sequence, kind, payload_json, turn_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(input.threadId, sequence, input.kind, JSON.stringify(input.payload), input.turnId ?? null, createdAt);
+      return {
+        id: Number(result.lastInsertRowid),
+        threadId: input.threadId,
+        sequence,
+        kind: input.kind,
+        payload: input.payload,
+        turnId: input.turnId ?? null,
+        createdAt,
+      };
+    });
+  }
+
+  listThreadEvents(threadId: string, after = 0): StoredThreadEvent[] {
+    const rows = this.db.prepare(`
+      SELECT id, thread_id AS threadId, sequence, kind, payload_json AS payloadJson,
+             turn_id AS turnId, created_at AS createdAt
+      FROM thread_events WHERE thread_id = ? AND sequence > ? ORDER BY sequence ASC
+    `).all(threadId, after) as Array<{
+      id: number; threadId: string; sequence: number; kind: "message" | "activity";
+      payloadJson: string; turnId: string | null; createdAt: string;
+    }>;
+    return rows.map(({ payloadJson, ...row }) => {
+      let payload: unknown = null;
+      try { payload = JSON.parse(payloadJson); } catch { payload = null; }
+      return { ...row, payload };
+    });
+  }
+
+  latestThreadSequence(threadId: string): number {
+    return (this.db.prepare(`SELECT COALESCE(MAX(sequence), 0) AS n FROM thread_events WHERE thread_id = ?`)
+      .get(threadId) as { n: number }).n;
+  }
+
+  deleteThread(threadId: string): boolean {
+    return this.db.prepare(`DELETE FROM threads WHERE thread_id = ?`).run(threadId).changes > 0;
   }
 
   /**
