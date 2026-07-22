@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   LayoutGridIcon,
   ListIcon,
+  MessageSquareTextIcon,
   type LucideIcon,
   NetworkIcon,
   PlugIcon,
@@ -36,6 +37,7 @@ const CORE_NAV: NavItem[] = [
   { hash: "#/projects", label: "Projects", icon: LayoutGridIcon },
   { hash: "#/meetings", label: "Meetings", icon: CalendarIcon },
   { hash: "#/loops", label: "Loops", icon: RepeatIcon },
+  { hash: "#/sessions", label: "Sessions", icon: MessageSquareTextIcon },
 ];
 
 const SETTINGS_NAV: NavItem = { hash: "#/settings", label: "Settings", icon: SettingsIcon };

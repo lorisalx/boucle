@@ -1,14 +1,9 @@
-import { ArrowLeftIcon, BotIcon, Loader2Icon, SendIcon, WrenchIcon } from "lucide-react";
+import { ArrowLeftIcon, Loader2Icon, SendIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type RunnerName, type VibeTranscript } from "./api.ts";
-import { BrainMarkdown, type WikiLinkProps } from "./Markdown.tsx";
-import { Button, ThemeToggle, cx } from "./ui.tsx";
-
-const EMPTY_WIKI: WikiLinkProps = {
-  knownProjects: new Set<string>(),
-  onOpenProject: () => {},
-};
+import { TranscriptEntries } from "./TranscriptEntries.tsx";
+import { Button, ThemeToggle } from "./ui.tsx";
 
 export function VibeThread({ runner, scope, sessionId }: { runner: RunnerName; scope: string; sessionId: string }) {
   const [thread, setThread] = useState<VibeTranscript | null>(null);
@@ -74,36 +69,7 @@ export function VibeThread({ runner, scope, sessionId }: { runner: RunnerName; s
             <Loader2Icon className="size-4 animate-spin" /> Loading {runner} thread…
           </div>
         ) : null}
-        {thread?.entries.map((entry, index) => {
-          if (entry.role === "tool") {
-            return (
-              <details key={index} className="mx-auto max-w-full text-[11px] text-dim">
-                <summary className="cursor-pointer list-none rounded-md border border-border px-2 py-1 hover:text-muted">
-                  <span className="inline-flex items-center gap-1.5">
-                    <WrenchIcon className="size-3" /> {entry.toolName ?? "Tool call"}
-                  </span>
-                </summary>
-                <pre className="mt-1 max-h-48 max-w-2xl overflow-auto whitespace-pre-wrap rounded bg-side p-2 font-mono text-[10px]">
-                  {entry.content}
-                </pre>
-              </details>
-            );
-          }
-          const user = entry.role === "user";
-          return (
-            <div key={index} className={cx("flex", user ? "justify-end" : "justify-start")}>
-              <div
-                className={cx(
-                  "text-sm leading-relaxed text-fg",
-                  user ? "max-w-[85%] rounded-2xl bg-side px-3.5 py-2.5" : "max-w-[92%] py-1",
-                )}
-              >
-                {!user ? <BotIcon className="mb-1.5 size-3.5 text-accent" /> : null}
-                <BrainMarkdown text={entry.content} wiki={EMPTY_WIKI} skipTitle={false} />
-              </div>
-            </div>
-          );
-        })}
+        {thread ? <TranscriptEntries entries={thread.entries} /> : null}
         {thread?.running ? (
           <div className="flex items-center gap-2 text-xs text-muted">
             <Loader2Icon className="size-3.5 animate-spin" /> {runner} running…

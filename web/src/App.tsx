@@ -8,6 +8,7 @@ import { Loops, LoopDetail } from "./Loops.tsx";
 import { Meetings } from "./Meetings.tsx";
 import { Projects } from "./Projects.tsx";
 import { Settings } from "./Settings.tsx";
+import { SessionDetail, Sessions } from "./Sessions.tsx";
 import { Shell } from "./Shell.tsx";
 import { TicketDetail } from "./TicketDetail.tsx";
 import { VibeThread } from "./VibeThread.tsx";
@@ -21,6 +22,7 @@ export function App() {
   const ticketMatch = /^#\/ticket\/(.+)$/.exec(hash);
   const loopMatch = /^#\/loops\/(.+)$/.exec(hash);
   const extMatch = /^#\/ext\/([a-z][a-z0-9-]*)$/.exec(hash);
+  const sessionMatch = /^#\/sessions\/(claude|codex)\/([^/]+)$/.exec(hash);
 
   let view = <Home />;
   if (agentMatch) {
@@ -28,6 +30,7 @@ export function App() {
   } else if (vibeMatch) {
     view = <VibeThread runner="vibe" scope={decodeURIComponent(vibeMatch[1])} sessionId={decodeURIComponent(vibeMatch[2])} />;
   } else if (chatMatch) view = <Chat conversationId={decodeURIComponent(chatMatch[1])} />;
+  else if (sessionMatch) view = <SessionDetail engine={sessionMatch[1] as "claude" | "codex"} sessionId={decodeURIComponent(sessionMatch[2])} />;
   else if (ticketMatch) view = <TicketDetail ticketId={ticketMatch[1]} />;
   else if (loopMatch) view = <LoopDetail loopId={loopMatch[1]} />;
   else if (extMatch) view = <ExtensionPage name={extMatch[1]!} />;
@@ -36,6 +39,7 @@ export function App() {
   else if (hash.startsWith("#/brain")) view = <Brain />;
   else if (hash.startsWith("#/meetings")) view = <Meetings />;
   else if (hash.startsWith("#/loops")) view = <Loops />;
+  else if (hash.startsWith("#/sessions")) view = <Sessions />;
   else if (hash.startsWith("#/settings")) view = <Settings />;
 
   return (

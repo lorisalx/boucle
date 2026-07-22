@@ -192,6 +192,22 @@ export interface VibeTranscript {
   running: boolean;
 }
 
+export type SessionEngine = "claude" | "codex";
+
+export interface SessionSummary {
+  engine: SessionEngine;
+  sessionId: string;
+  title: string | null;
+  cwd: string | null;
+  project: string | null;
+  startedAt: string | null;
+  updatedAt: string;
+  filePath: string;
+  sizeBytes: number;
+}
+
+export type SessionTranscript = Omit<VibeTranscript, "running">;
+
 export type ProjectStatus = "scoping" | "in_progress" | "backlog" | "on_hold" | "done" | "archived";
 
 export interface ProjectSummary {
@@ -431,6 +447,20 @@ export const api = {
     get: (runner: RunnerName, scope: string, sessionId: string) =>
       fetch(`/api/agents/${runner}/${encodeURIComponent(scope)}/${encodeURIComponent(sessionId)}`).then((r) =>
         json<VibeTranscript>(r),
+      ),
+  },
+  sessions: {
+    list: (params: { engine?: SessionEngine; q?: string; limit?: number } = {}) => {
+      const query = new URLSearchParams();
+      if (params.engine) query.set("engine", params.engine);
+      if (params.q?.trim()) query.set("q", params.q.trim());
+      if (params.limit !== undefined) query.set("limit", String(params.limit));
+      const suffix = query.size > 0 ? `?${query.toString()}` : "";
+      return fetch(`/api/sessions${suffix}`).then((r) => json<{ sessions: SessionSummary[] }>(r));
+    },
+    get: (engine: SessionEngine, sessionId: string) =>
+      fetch(`/api/sessions/${engine}/${encodeURIComponent(sessionId)}`).then((r) =>
+        json<{ summary: SessionSummary; transcript: SessionTranscript }>(r),
       ),
   },
   mcpInfo: () =>

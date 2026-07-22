@@ -15,7 +15,7 @@ import {
 import { unattendedFullAccess } from "./config.ts";
 import type { AgentExecResult, AgentExecSpec, AgentRunner, Transcript, TranscriptEntry } from "./runner.ts";
 
-interface JsonRecord {
+export interface CodexJsonRecord {
   readonly type?: unknown;
   readonly timestamp?: unknown;
   readonly thread_id?: unknown;
@@ -65,13 +65,13 @@ function supportsResume(binary: string): Promise<boolean> {
   return result;
 }
 
-function jsonLines(raw: string): JsonRecord[] {
-  const records: JsonRecord[] = [];
+export function parseCodexJsonl(raw: string): CodexJsonRecord[] {
+  const records: CodexJsonRecord[] = [];
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
     try {
       const value = JSON.parse(line) as unknown;
-      if (value && typeof value === "object") records.push(value as JsonRecord);
+      if (value && typeof value === "object") records.push(value as CodexJsonRecord);
     } catch {
       // Codex may mix a warning into JSONL output; keep parsing later lines.
     }
@@ -85,7 +85,7 @@ function stringField(value: unknown, key: string): string | null {
   return typeof field === "string" && field.trim() ? field : null;
 }
 
-function sessionIdFromRecords(records: readonly JsonRecord[]): string | null {
+function sessionIdFromRecords(records: readonly CodexJsonRecord[]): string | null {
   for (const record of records) {
     if (typeof record.thread_id === "string") return record.thread_id;
     if (typeof record.session_id === "string") return record.session_id;
@@ -95,7 +95,7 @@ function sessionIdFromRecords(records: readonly JsonRecord[]): string | null {
   return null;
 }
 
-function finalMessageFromRecords(records: readonly JsonRecord[]): string | null {
+function finalMessageFromRecords(records: readonly CodexJsonRecord[]): string | null {
   for (const record of records.toReversed()) {
     const item = record.item;
     if (stringField(item, "type") === "agent_message") {
@@ -132,7 +132,7 @@ async function rolloutFiles(root: string): Promise<string[]> {
 async function rolloutMeta(path: string): Promise<{ sessionId: string | null; mtimeMs: number }> {
   try {
     const [raw, info] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-    return { sessionId: sessionIdFromRecords(jsonLines(raw)), mtimeMs: info.mtimeMs };
+    return { sessionId: sessionIdFromRecords(parseCodexJsonl(raw)), mtimeMs: info.mtimeMs };
   } catch {
     return { sessionId: null, mtimeMs: 0 };
   }
@@ -159,26 +159,62 @@ function contentText(value: unknown): string {
   }).filter(Boolean).join("\n");
 }
 
-function transcriptEntries(records: readonly JsonRecord[]): TranscriptEntry[] {
+function serializedField(value: unknown, key: string): string | null {
+  if (!value || typeof value !== "object") return null;
+  const field = (value as Record<string, unknown>)[key];
+  if (typeof field === "string" && field.trim()) return field;
+  if (field === undefined || field === null) return null;
+  try {
+    return JSON.stringify(field, null, 2);
+  } catch {
+    return String(field);
+  }
+}
+
+export function mapCodexRolloutEntries(records: readonly CodexJsonRecord[]): TranscriptEntry[] {
   const entries: TranscriptEntry[] = [];
+  const toolNames = new Map<string, string>();
+  const pushMessage = (role: "user" | "assistant", content: string): void => {
+    const previous = entries.at(-1);
+    if (previous?.role === role && previous.content === content) return;
+    entries.push({ role, content });
+  };
   for (const record of records) {
     const payload = record.payload;
     const payloadType = stringField(payload, "type");
     if (record.type === "event_msg" && payloadType === "user_message") {
       const content = stringField(payload, "message");
-      if (content) entries.push({ role: "user", content });
+      if (content) pushMessage("user", content);
+      continue;
+    }
+    if (record.type === "event_msg" && payloadType === "agent_message") {
+      const content = stringField(payload, "message");
+      if (content) pushMessage("assistant", content);
       continue;
     }
     if (record.type !== "response_item") continue;
     if (payloadType === "message") {
       const role = stringField(payload, "role");
       const content = contentText((payload as Record<string, unknown>).content);
-      if (content && (role === "user" || role === "assistant")) entries.push({ role, content });
+      if (content && (role === "user" || role === "assistant")) pushMessage(role, content);
       continue;
     }
     if (payloadType === "function_call" || payloadType === "custom_tool_call" || payloadType === "local_shell_call") {
       const toolName = stringField(payload, "name") ?? (payloadType === "local_shell_call" ? "shell" : "tool");
-      entries.push({ role: "tool", toolName, content: `used: ${toolName}` });
+      const callId = stringField(payload, "call_id") ?? stringField(payload, "id");
+      if (callId) toolNames.set(callId, toolName);
+      const content = serializedField(payload, "input")
+        ?? serializedField(payload, "arguments")
+        ?? serializedField(payload, "action")
+        ?? `used: ${toolName}`;
+      entries.push({ role: "tool", toolName, content });
+      continue;
+    }
+    if (payloadType === "function_call_output" || payloadType === "custom_tool_call_output" || payloadType === "local_shell_call_output") {
+      const callId = stringField(payload, "call_id") ?? stringField(payload, "id");
+      const toolName = callId ? toolNames.get(callId) ?? "tool" : "tool";
+      const content = serializedField(payload, "output") ?? "completed";
+      entries.push({ role: "tool", toolName, content });
     }
   }
   return entries;
@@ -224,7 +260,7 @@ export class CodexRunner implements AgentRunner {
       timeoutMin: spec.timeoutMin,
       env,
     });
-    const records = jsonLines(processResult.stdout);
+    const records = parseCodexJsonl(processResult.stdout);
     let sessionId = sessionIdFromRecords(records) ?? spec.resumeSessionId;
     const rollout = await findRollout(codexHome, sessionId, startedMs);
     if (!sessionId && rollout) sessionId = (await rolloutMeta(rollout)).sessionId;
@@ -250,9 +286,9 @@ export class CodexRunner implements AgentRunner {
       } : null;
     }
     try {
-      const records = jsonLines(await readFile(rollout, "utf8"));
+      const records = parseCodexJsonl(await readFile(rollout, "utf8"));
       const times = records.map((record) => typeof record.timestamp === "string" ? record.timestamp : null).filter((v): v is string => v !== null);
-      const entries = transcriptEntries(records);
+      const entries = mapCodexRolloutEntries(records);
       if (fallback && !entries.some((entry) => entry.role === "assistant")) {
         entries.push({ role: "assistant", content: fallback });
       }

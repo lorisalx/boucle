@@ -98,7 +98,12 @@ function contentEntries(role: "user" | "assistant", value: unknown): TranscriptE
   return entries;
 }
 
-function parseTranscript(raw: string): { entries: TranscriptEntry[]; startTime: string | null; endTime: string | null; sessionId: string | null } {
+export function parseClaudeJsonl(raw: string): {
+  entries: TranscriptEntry[];
+  startTime: string | null;
+  endTime: string | null;
+  sessionId: string | null;
+} {
   const entries: TranscriptEntry[] = [];
   const times: string[] = [];
   let sessionId: string | null = null;
@@ -206,7 +211,7 @@ export class ClaudeRunner implements AgentRunner {
       } : null;
     }
     try {
-      const parsed = parseTranscript(await readFile(path, "utf8"));
+      const parsed = parseClaudeJsonl(await readFile(path, "utf8"));
       return {
         meta: {
           sessionId: parsed.sessionId ?? sessionId,

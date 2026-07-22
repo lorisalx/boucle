@@ -69,6 +69,7 @@ import { getProvider, invalidateProvider } from "./providers/index.ts";
 import type { Provider } from "./providers/types.ts";
 import { getAgentRunner } from "./runner.ts";
 import { isKnownRunnerName, knownProviderNames, knownRunnerNames } from "./selectors.ts";
+import { listSessions, readSession, SESSION_ID_RE, type SessionEngine } from "./sessions-index.ts";
 import type { RunnerName } from "./settings.ts";
 import {
   CONFIGURABLE_SETTING_KEYS,
@@ -155,6 +156,36 @@ app.get("/api/projects", (c) => c.json(listProjects(store.listOpen(), store.list
 // Recorded meetings — read-only view of the gbrain meetings/ notes. Recording itself
 // stays native (menu bar); the dashboard only surfaces what the recorder + loop produce.
 app.get("/api/meetings", (c) => c.json(listMeetings()));
+
+app.get("/api/sessions", async (c) => {
+  const engineParam = c.req.query("engine")?.trim();
+  if (engineParam && engineParam !== "claude" && engineParam !== "codex") {
+    return c.json({ error: "invalid session engine" }, 400);
+  }
+  const rawLimit = c.req.query("limit");
+  const parsedLimit = rawLimit === undefined ? 100 : Number.parseInt(rawLimit, 10);
+  const limit = Number.isFinite(parsedLimit) && parsedLimit >= 0 ? parsedLimit : 100;
+  const sessions = await listSessions({
+    engine: engineParam as SessionEngine | undefined,
+    q: c.req.query("q"),
+    limit,
+  });
+  return c.json({ sessions });
+});
+
+app.get("/api/sessions/:engine/:sessionId", async (c) => {
+  const engine = c.req.param("engine");
+  const sessionId = c.req.param("sessionId");
+  if ((engine !== "claude" && engine !== "codex") || !SESSION_ID_RE.test(sessionId)) {
+    return c.json({ error: "invalid session engine or id" }, 400);
+  }
+  const summary = (await listSessions({ engine, limit: Number.MAX_SAFE_INTEGER }))
+    .find((session) => session.sessionId.toLocaleLowerCase() === sessionId.toLocaleLowerCase());
+  if (!summary) return c.json({ error: "session not found" }, 404);
+  const transcript = await readSession(engine, sessionId);
+  if (!transcript) return c.json({ error: "session not found" }, 404);
+  return c.json({ summary, transcript });
+});
 
 // Status changes write into the gbrain page's frontmatter (the file is the source
 // of truth); the sqlite overlay only backs ticket-only projects that have no page.
