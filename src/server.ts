@@ -7,6 +7,7 @@
  */
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { realpath, stat } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@hono/node-server";
@@ -77,6 +78,9 @@ import { ClaudeAdapter } from "./threads/claude-adapter.ts";
 import { CodexAdapter } from "./threads/codex-adapter.ts";
 import { ThreadManager } from "./threads/manager.ts";
 import { threadWireEventSchema } from "./threads/wire.ts";
+import { TerminalManager, TERMINAL_ID_RE, TERMINAL_THREAD_ID_RE } from "./terminal/manager.ts";
+import { NodePtyAdapter } from "./terminal/pty-adapter.ts";
+import { terminalClientMessageSchema, terminalServerMessageSchema } from "./terminal/wire.ts";
 import {
   CONFIGURABLE_SETTING_KEYS,
   parseSettingsUpdate,
@@ -102,6 +106,10 @@ const scheduler = new LoopScheduler(store, dbPath);
 const app = new Hono();
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 const threadManager = new ThreadManager(store, [new ClaudeAdapter(), new CodexAdapter()]);
+const terminalManager = new TerminalManager({
+  adapter: new NodePtyAdapter(),
+  historyDir: join(process.cwd(), "var", "terminals"),
+});
 
 /** Length-safe constant-time string compare, so token checks do not leak bytes via timing. */
 function safeEqual(a: string, b: string): boolean {
@@ -137,8 +145,8 @@ function authorizedWebSocket(c: Context): boolean {
 // localhost demo is unchanged; a hard gate once an operator sets the token. Registered before
 // the routes so it wraps every /api/* handler, including /api/mcp-info.
 app.use("/api/*", async (c, next) => {
-  const isThreadWebSocket = /^\/api\/threads\/[^/]+\/ws$/.test(c.req.path);
-  if (!(isThreadWebSocket ? authorizedWebSocket(c) : authorized(c))) return c.json({ error: "unauthorized" }, 401);
+  const isWebSocket = /^\/api\/(?:threads\/[^/]+|terminals\/[^/]+\/[^/]+)\/ws$/.test(c.req.path);
+  if (!(isWebSocket ? authorizedWebSocket(c) : authorized(c))) return c.json({ error: "unauthorized" }, 401);
   await next();
 });
 
@@ -332,6 +340,92 @@ app.get("/api/threads/:id/ws", async (c, next) => {
   if (!THREAD_ID_RE.test(id)) return c.json({ error: "invalid thread id" }, 400);
   if (!store.getThread(id)) return c.json({ error: "thread not found" }, 404);
   const response = await threadWebSocket(c, next);
+  return response ?? c.body(null, 426);
+});
+
+function terminalCwd(threadId: string): string | null {
+  if (THREAD_ID_RE.test(threadId)) return store.getThread(threadId)?.cwd ?? null;
+  if (!threadId.startsWith("project_")) return null;
+  const projectId = threadId.slice("project_".length);
+  if (!isValidProjectId(projectId)) return null;
+  const exists = listProjects(store.listOpen(), store.listProjectMeta())
+    .some((project) => project.projectId === projectId);
+  return exists ? process.cwd() : null;
+}
+
+const terminalWebSocket = upgradeWebSocket((c) => {
+  const threadId = c.req.param("threadId")!;
+  const terminalId = c.req.param("terminalId")!;
+  const cwd = terminalCwd(threadId)!;
+  let unsubscribe: (() => void) | undefined;
+  let closed = false;
+  let ready: Promise<void> = Promise.resolve();
+  return {
+    onOpen: (_event, ws) => {
+      ready = terminalManager.attach({ threadId, terminalId, cwd }, (event) => {
+        ws.send(JSON.stringify(terminalServerMessageSchema.parse(event)));
+      }).then((stop) => {
+        if (closed) stop();
+        else unsubscribe = stop;
+      }).catch((error) => {
+        process.stderr.write(`[boucle] terminal attach failed: ${error instanceof Error ? error.message : String(error)}\n`);
+        ws.close(1011, "terminal attach failed");
+      });
+    },
+    onMessage: async (event, ws) => {
+      let parsed: ReturnType<typeof terminalClientMessageSchema.safeParse>;
+      try {
+        parsed = terminalClientMessageSchema.safeParse(JSON.parse(String(event.data)));
+      } catch {
+        ws.close(1008, "invalid terminal message");
+        return;
+      }
+      if (!parsed.success) {
+        ws.close(1008, "invalid terminal message");
+        return;
+      }
+      await ready;
+      try {
+        switch (parsed.data.type) {
+          case "write":
+            terminalManager.write(threadId, terminalId, parsed.data.data);
+            break;
+          case "resize":
+            terminalManager.resize(threadId, terminalId, parsed.data.cols, parsed.data.rows);
+            break;
+          case "restart":
+            await terminalManager.restart(threadId, terminalId);
+            break;
+          case "close":
+            await terminalManager.close(threadId, terminalId);
+            ws.close(1000, "terminal closed");
+            break;
+        }
+      } catch (error) {
+        process.stderr.write(`[boucle] terminal message failed: ${error instanceof Error ? error.message : String(error)}\n`);
+        ws.close(1011, "terminal operation failed");
+      }
+    },
+    onClose: () => {
+      closed = true;
+      unsubscribe?.();
+    },
+    onError: () => {
+      closed = true;
+      unsubscribe?.();
+    },
+  };
+});
+
+app.get("/api/terminals/:threadId/:terminalId/ws", async (c, next) => {
+  const threadId = c.req.param("threadId");
+  const terminalId = c.req.param("terminalId");
+  if (!authorizedWebSocket(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!TERMINAL_THREAD_ID_RE.test(threadId) || !TERMINAL_ID_RE.test(terminalId)) {
+    return c.json({ error: "invalid terminal id" }, 400);
+  }
+  if (!terminalCwd(threadId)) return c.json({ error: "thread or project not found" }, 404);
+  const response = await terminalWebSocket(c, next);
   return response ?? c.body(null, 426);
 });
 
@@ -1169,3 +1263,19 @@ const httpServer = serve({ fetch: app.fetch, port: BOUCLE_PORT, hostname: BOUCLE
   process.stdout.write(`boucle server on http://${info.address}:${info.port}\n`);
 });
 injectWebSocket(httpServer);
+
+let shutdownStarted = false;
+async function shutdown(): Promise<void> {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  scheduler.stop();
+  await Promise.allSettled([threadManager.dispose(), terminalManager.dispose()]);
+  const forceExit = setTimeout(() => process.exit(0), 2500);
+  forceExit.unref();
+  httpServer.close(() => {
+    clearTimeout(forceExit);
+    process.exit(0);
+  });
+}
+process.once("SIGTERM", () => void shutdown());
+process.once("SIGINT", () => void shutdown());

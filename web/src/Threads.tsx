@@ -6,6 +6,7 @@ import {
   MessageSquarePlusIcon,
   OctagonIcon,
   SendIcon,
+  TerminalIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -22,6 +23,7 @@ import {
   type ThreadWireEvent,
 } from "./api.ts";
 import { BrainMarkdown, type WikiLinkProps } from "./Markdown.tsx";
+import { TerminalDrawer } from "./TerminalDrawer.tsx";
 import { Bubble, BubbleContent } from "./components/ui/bubble.tsx";
 import { Message, MessageContent } from "./components/ui/message.tsx";
 import {
@@ -307,6 +309,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showTerminal, setShowTerminal] = useState(false);
   const timeline = useMemo(() => foldTimeline(events), [events]);
   const thread = snapshot?.thread;
   const lastToolSequence = [...timeline.items].reverse().find((item) => item.type === "activity" && item.payload.tone === "tool")?.sequence;
@@ -358,6 +361,12 @@ export function ThreadView({ threadId }: { threadId: string }) {
             <OctagonIcon className="size-3.5" /> Interrupt
           </button>
         ) : null}
+        <button
+          onClick={() => setShowTerminal((visible) => !visible)}
+          className={cx("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold", showTerminal ? "border-accent text-accent" : "border-border text-fg hover:bg-side")}
+        >
+          <TerminalIcon className="size-3.5" /> Terminal
+        </button>
       </header>
 
       <div className="min-h-0 flex-1">
@@ -416,6 +425,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
           </div>
         </div>
       </footer>
+      {showTerminal ? <TerminalDrawer threadId={threadId} cwd={thread.cwd} /> : null}
     </div>
   );
 }
